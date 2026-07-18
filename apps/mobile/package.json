@@ -1,0 +1,45 @@
+{
+  "name": "mobile",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "dev": "./scripts/dev.sh",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"(mobile) add eslint config here\""
+  },
+  "dependencies": {
+    "@apollo/client": "^3.11.8",
+    "@babel/plugin-proposal-decorators": "7.24.7",
+    "@lovesworking/watermelondb-expo-plugin-sdk-52-plus": "^1.0.3",
+    "@nozbe/watermelondb": "^0.28.0",
+    "expo": "~55.0.27",
+    "expo-build-properties": "~55.0.15",
+    "expo-dev-client": "~55.0.36",
+    "expo-image-manipulator": "~55.0.18",
+    "expo-image-picker": "~55.0.21",
+    "expo-status-bar": "~55.0.6",
+    "graphql": "^16.9.0",
+    "react": "19.2.0",
+    "react-native": "0.83.6",
+    "react-native-safe-area-context": "~5.6.2"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/react": "~19.2.10",
+    "typescript": "~5.9.2"
+  },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "@nozbe/watermelondb",
+          "@nozbe/simdjson"
+        ]
+      }
+    }
+  }
+}
