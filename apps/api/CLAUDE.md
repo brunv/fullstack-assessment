@@ -29,7 +29,7 @@ apps/api/
 - `config/urls.py` mounts `graphql/` → `GraphQLView.as_view(graphiql=True)`
   (csrf-exempt), plus `admin/` and `health/`.
 
-## Existing reference slice (read-only)
+## Reference slice (read-only): Project/Image
 
 `core/models.py`: `Project` (name, description, created_at) and `Image`
 (FK → Project, `file` FileField on S3/MinIO storage, original_name,
@@ -37,29 +37,69 @@ content_type, uploaded_at).
 
 `core/schema.py`: `ProjectType` / `ImageType` (graphene-django
 `DjangoObjectType`), `ImageType.resolve_download_url` calls `presign_get`.
-`Query` exposes `projects` / `project(id)`. **`Mutation` is empty**
-(`class Mutation(graphene.ObjectType): pass`) — no mutations exist in this
-codebase at all yet.
+`Query` exposes `projects` / `project(id)`. No mutations touch these models —
+this slice stays read-only.
 
-`core/storage.py`: `presign_put(key, content_type, expires)` and
-`presign_get(key, expires)` — boto3 helpers signed against the public MinIO
-endpoint.
+**Note**: `apps/api/README.md`'s "Example queries" section shows
+`createProject` and `createPresignedUpload` mutations against Project/Image.
+These were never implemented for Project/Image specifically — only
+`createPresignedUpload` exists (generic, used by Job/Post, see below).
 
-**Important**: `apps/api/README.md`'s "Example queries" section shows
-`createProject` and `createPresignedUpload` mutations. These are
-**aspirational/illustrative** — they show the pattern to build, they are not
-callable today. Don't assume they exist; grep `core/schema.py` before relying
-on any mutation.
+## Job/Post feature (built)
 
-## What needs building
+`core/models.py`: `Job` (`id` client-generatable 16-char string PK via
+`generate_client_id()`, `title`, `is_deleted`, `created_at`, `updated_at`) and
+`Post` (same id scheme, FK → Job `related_name="posts"`, `description`,
+`picture_key`, `picture_content_type`, `is_deleted`, `created_at`,
+`updated_at`). **Deletes are soft** — `is_deleted` is a tombstone flag, never
+a hard `DELETE`; see `soft_delete_job()`/`soft_delete_post()` in
+`core/models.py` (the former cascades to the job's posts). `JobAdmin`/
+`PostAdmin` in `core/admin.py` block the admin's hard-delete action via
+`has_delete_permission`.
 
-- `Job` and `Post` models (Post has an optional picture, FK to Job)
-- `JobType` / `PostType` GraphQL types
-- `createJob`, `createPost`, `createPresignedUpload` mutations (the upload
-  mutation belongs to the same pattern as `presign_put`/`presign_get` above,
-  just not implemented yet for any model)
-- A WatermelonDB sync endpoint implementing the
-  [synchronize() pull/push protocol](https://watermelondb.dev/docs/Sync/Intro)
+`core/schema.py`: `JobType`/`PostType` (`Query.jobs`/`Query.job(id)` filter
+`is_deleted=False`; `JobType.resolve_posts` filters the reverse relation the
+same way). Mutations: `createJob(title)`, `createPost(jobId, description,
+pictureKey, pictureContentType)`, `createPresignedUpload(filename,
+contentType)` (generic — reused for any picture), `deleteJob(id)`,
+`deletePost(id)` (soft-delete, `deleteJob` cascades). **None of these are
+mobile's primary write path** — mobile writes/deletes locally via
+WatermelonDB and syncs through `core/sync.py` below; these mutations exist
+for API completeness/testing and a future web client.
+
+`core/storage.py` adds `public_url(key)` — a plain, non-expiring URL, used
+for `PostType.picture_url` and the sync pull payload **instead of**
+`presign_get`. The MinIO bucket is public-read (`mc anonymous set download`
+in `docker-compose.yml`), and a presigned GET's ~1h expiry would go stale
+against data cached indefinitely in the mobile app's local SQLite — `presign_get`
+remains available but Job/Post reads deliberately don't use it. `presign_put`
+is unaffected (uploads are one-shot/short-lived, presigning is correct there).
+
+`core/sync.py`: the WatermelonDB `synchronize()` pull/push endpoint, mounted
+at `path("sync/", csrf_exempt(sync_view))` in `config/urls.py` (GET = pull,
+POST = push). Timestamps cross the wire as **epoch milliseconds**, not ISO
+strings. **Pull's `created` bucket is intentionally always empty** — every
+non-deleted changed row is reported as `updated`, paired with
+`sendCreatedAsUpdated: true` on the mobile client's `synchronize()` call (see
+`apps/mobile/src/db/sync.ts`). This avoids a real failure mode: a device can
+create a record, push it, and then pull using its pre-push checkpoint (e.g.
+after a partial failure/retry) — classifying that row as `created` makes
+WatermelonDB warn/reject because the local record already exists; reporting
+it as `updated` keeps that flow idempotent while still correctly
+materializing genuinely-missing rows on other devices. Push does an
+all-or-nothing conflict pre-check (`transaction.atomic`) per WatermelonDB's
+backend contract — a pushed record whose server `updated_at` moved past the
+client's `lastPulledAt` aborts the whole push (409); the mobile client
+retries once (re-pull, re-push). Deletes arrive as id lists and are applied
+via the same soft-delete helpers as the GraphQL mutations. Verified
+end-to-end via curl: fresh pull, valid push, stale-push abort (409),
+delete→tombstone round trip, and job-delete cascading to its posts even when
+the push only names the job id.
+
+True concurrent-edit conflicts are unreachable in the current mobile UI
+(create/delete only, no field-level edit), so the abort/retry path is real
+but is exercised via retry-after-partial-failure, not concurrent multi-device
+edits — see root `CLAUDE.md` for the fuller rationale.
 
 ## Settings / env vars (`config/settings.py`)
 
@@ -94,8 +134,8 @@ python manage.py runserver 0.0.0.0:8000
 GraphiQL: http://localhost:8000/graphql/ · Health: http://localhost:8000/health/
 · Admin: http://localhost:8000/admin/ (`python manage.py createsuperuser`)
 
-Migrations: single `core/migrations/0001_initial.py` so far — new
-models/mutations need a new migration.
+Migrations: `core/migrations/0001_initial.py` (Project/Image),
+`0002_job_post.py` (Job/Post) — new fields need a new migration as usual.
 
 ## Conventions
 

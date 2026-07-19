@@ -10,68 +10,99 @@ WatermelonDB ^0.28.0 (offline-first local DB), Apollo Client. Must run via a
 custom dev client (`expo-dev-client`) — **Expo Go will not work** because of
 WatermelonDB's native modules.
 
-## Structure (as it exists today — bare scaffold)
+## Structure
 
 ```
 apps/mobile/
-  App.tsx             Root component — currently just a static placeholder screen, no navigation wired
-  index.ts             Expo entry point (registerRootComponent)
+  App.tsx                Provider stack (SafeArea → Apollo → WatermelonDB DatabaseProvider →
+                          SyncProvider → RootNavigator) + <Toast/> mounted at root
+  index.ts                Expo entry point (registerRootComponent)
   src/
-    apollo.ts           Apollo Client setup — defined but NOT yet wired into App.tsx (no ApolloProvider)
-    db/                  Empty (.gitkeep only) — no schema, models, or adapter yet
-    screens/             Empty (.gitkeep only) — no screens yet
-  android/, ios/        Native projects, gitignored (generated via Expo prebuild) — don't hand-edit
+    apollo.ts               Apollo Client, wired into App.tsx
+    config.ts                GRAPHQL_URL / SYNC_URL (EXPO_PUBLIC_GRAPHQL_URL / EXPO_PUBLIC_API_URL)
+    theme.ts                 colors/spacing/radius constants shared by all screens
+    db/
+      schema.ts               WatermelonDB appSchema: jobs, posts tables (snake_case, mirrors API fields)
+      models/Job.ts, Post.ts   Model classes (@field/@date/@children/@relation decorators)
+      index.ts                 SQLiteAdapter + Database singleton, jobsCollection/postsCollection
+      mutations.ts             createJob/createPost/deleteJob(cascade)/deletePost/updatePostPictureKey
+      sync.ts                  syncDatabase(): picture pre-pass → synchronize() with retry-once, in-flight guard
+    sync/
+      SyncContext.tsx          useSync() hook: status (synced/pending/syncing), triggerSync(), AppState + NetInfo triggers
+      SyncHeaderButton.tsx      nav-header icon reflecting sync status
+    navigation/
+      types.ts, RootNavigator.tsx   native-stack: Home, JobDetails, PostDetails
+    screens/
+      HomeScreen.tsx            Job list (observed), FAB → create modal, delete w/ confirm
+      JobDetailsScreen.tsx      Post list for a job (rows tappable → PostDetails), add-post button, delete w/ confirm
+      PostDetailsScreen.tsx     Full-size image + description for one post, observed by id
+      components/JobRow.tsx, PostRow.tsx, CreatePostModal.tsx
+    utils/
+      pickImage.ts              camera/library pick → resize/compress → persist to FileSystem.documentDirectory
+      formatRelativeTime.ts
+  android/, ios/          Native projects, gitignored (generated via Expo prebuild) — don't hand-edit
 ```
 
-No `components/`, `graphql/`, or `navigation/` folders exist yet. No
-navigation library is installed — this is an open choice for whoever builds
-the Jobs feature. There is no Project/Image reference UI on mobile; the
-reference slice lives server-side only (`apps/api/core/`).
+## WatermelonDB (fully wired: native + schema + sync)
 
-## WatermelonDB: native side is done, app side is not
+Native side (pre-existing, unchanged): `@nozbe/watermelondb` +
+`@lovesworking/watermelondb-expo-plugin-sdk-52-plus` in `package.json`, Expo
+config plugin in `app.json`, babel legacy decorators in `babel.config.js`
+(also required `experimentalDecorators: true` in `tsconfig.json` — TS doesn't
+infer this from babel config), Android Gradle module, `metro.config.js`
+blocklisting `.cxx/**`.
 
-Already wired (don't redo):
-- `@nozbe/watermelondb` + `@lovesworking/watermelondb-expo-plugin-sdk-52-plus`
-  in `package.json`
-- Expo plugin registered in `app.json` (`expo.plugins`), alongside
-  `expo-build-properties`
-- Babel decorators in `babel.config.js`
-  (`@babel/plugin-proposal-decorators`, legacy mode) — required for
-  WatermelonDB's `@field`/`@relation` decorators
-- Native Android wiring confirmed generated:
-  `android/app/build.gradle` has `implementation project(':watermelondb-jsi')`
-- `metro.config.js` blocklists native build scratch dirs (`.cxx/**`)
+App side (`src/db/`): `schema.ts` defines `jobs`/`posts` with snake_case
+columns matching the API's Job/Post fields closely (so the sync payload
+passes through with minimal mapping). `created_at`/`updated_at` use
+WatermelonDB's auto-managed-timestamp convention (`@readonly @date(...)`
+properties named exactly `createdAt`/`updatedAt` — the library sets/bumps
+them automatically on create/update, see `Model/helpers.js`'s
+`createTimestampsFor`). `posts.picture_local_uri` is a device-local field
+(persisted photo path, see `utils/pickImage.ts`) that gets pushed like any
+column but the server's field whitelist (`apps/api/core/sync.py`) silently
+drops it. `posts.picture_url` is populated only by pull. Display rule
+everywhere: prefer `pictureLocalUri`, fall back to `pictureUrl`.
 
-Still to build (`src/db/` is empty): `schema.ts`, model classes (e.g.
-`Job.ts`, `Post.ts`), `SQLiteAdapter` instantiation, and sync logic calling
-`synchronize()` against the API's sync endpoint.
+`src/db/mutations.ts`: `deleteJob` fetches the job's currently-loaded posts
+and marks job + posts deleted in one `database.batch()` (WatermelonDB's
+default queries already exclude `_status === 'deleted'` records, so no manual
+filtering needed elsewhere) — the API's server-side cascade
+(`soft_delete_job`) is a backstop if this batch is interrupted.
 
-## Apollo Client
+`src/db/sync.ts`: `syncDatabase()` — guarded by a module-level in-flight
+promise (concurrent triggers coalesce into one sync). Order: picture
+upload pre-pass (each item's failure isolated via try/catch, never throws
+out of the pre-pass) → `synchronize()` wrapped in a retry-once block per
+WatermelonDB's documented recommendation for the abort-on-conflict case.
+`synchronize()` is called with `sendCreatedAsUpdated: true`, paired with the
+API's pull always reporting `created` as empty (`apps/api/core/sync.py`) — a
+record created-then-pushed-then-repulled-from-a-stale-checkpoint would
+otherwise be misclassified as a fresh `created` row and rejected by
+WatermelonDB as already existing locally.
 
-`src/apollo.ts`: `ApolloClient` with `HttpLink` + `InMemoryCache`, URI from
-`process.env.EXPO_PUBLIC_GRAPHQL_URL ?? "http://localhost:8000/graphql/"`.
-**Not yet wired into `App.tsx`** — no `ApolloProvider` in the tree yet.
+## Sync status UI & triggers (`src/sync/SyncContext.tsx`)
 
-No `.env` files needed normally: `yarn dev` (`scripts/dev.sh`) runs `adb
-reverse tcp:8000 tcp:8000` and `adb reverse tcp:9000 tcp:9000` for the
-Android emulator; iOS simulator resolves `localhost` natively. Override with
-`EXPO_PUBLIC_GRAPHQL_URL` / `EXPO_PUBLIC_API_URL` only when pointing at a
-remote API.
+`useSync()` exposes `status: 'synced' | 'pending' | 'syncing'` (derived by
+observing `Q.where('_status', Q.notEq('synced'))` counts on both
+collections) and `triggerSync({ silent? })`. Background triggers (create,
+delete, `AppState` → `active`, `NetInfo` offline→online transition) pass
+`silent: true` and skip quietly when offline (expected state, not an error —
+already visible via the pending/cloud-slash icons). The manual header button
+(`SyncHeaderButton.tsx`) passes no options, so it shows an info toast if
+offline. Row-level cloud-slash icons (`JobRow`/`PostRow`) read
+`record.syncStatus !== "synced"` directly — re-renders naturally since the
+parent `.observe()` re-emits on any status change.
 
 ## Image capture/picker
 
-Available: `expo-image-picker` (~55.0.21), `expo-image-manipulator`
-(~55.0.18). No `expo-camera` installed.
-
-## What needs building
-
-- Navigation (pick a library — none installed)
-- WatermelonDB schema/models/adapter/sync (`src/db/`)
-- Screens: create Job, add Post with picture (capture or pick from gallery),
-  list Jobs/Posts, offline create/read
-- Wire `ApolloProvider` into `App.tsx`
-- Sync worker: upload local Post pictures (`pictureLocalUri`) to MinIO before
-  push, then push only the resulting key (see root CLAUDE.md data flow)
+`expo-image-picker` + `expo-image-manipulator` (resize to 1600px wide,
+compress, JPEG) + `expo-file-system`'s `File`/`Directory`/`Paths` classes
+(SDK 55's new API, not the legacy `documentDirectory` string API) to persist
+into `Paths.document` — picker/camera results land in a cache dir the OS can
+purge, so a picture captured offline could otherwise vanish before syncing.
+`expo-image` (not bare RN `Image`) is used for display. No `expo-camera`
+installed (not needed — `launchCameraAsync` covers capture).
 
 ## Running
 
@@ -85,7 +116,23 @@ yarn ios             # expo run:ios
 
 Requires the API stack up (`yarn stack:up` from repo root).
 
+**Gotcha**: if `npx expo run:ios`'s `pod install` step fails with a Ruby
+`UnicodeNormalize`/`ASCII-8BIT` error, the shell's `LANG` isn't set to UTF-8
+(`locale` shows blank) — `export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` before
+retrying (either inline or run `pod install` directly in `ios/` with those
+vars set, then re-run `expo run:ios`).
+
+Verified end-to-end on iOS Simulator: app boots cleanly (no runtime errors),
+WatermelonDB creates the correct `jobs`/`posts` SQLite schema on first launch
+(confirmed via `sqlite3` on the simulator's `watermelon.db`), and the
+simulator reaches the Dockerized API at `localhost:8000` with no proxy setup
+needed (matches the README's stated iOS behavior). Full interactive
+click-through (tapping the FAB, creating a Job, syncing) wasn't driven by the
+agent in this session — the sandboxed dev environment had no touch-injection
+path (no Accessibility/Automation permission for AppleScript, no `idb`).
+
 ## Conventions
 
 No tests exist yet. `lint` script is currently a stub (no real ESLint
-config). `tsconfig.json` extends `expo/tsconfig.base` with `strict: true`.
+config). `tsconfig.json` extends `expo/tsconfig.base` with `strict: true`
+and `experimentalDecorators: true` (added for WatermelonDB's decorators).

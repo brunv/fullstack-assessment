@@ -24,14 +24,19 @@
             "compileSdkVersion": 36,
             "targetSdkVersion": 36,
             "packagingOptions": {
-              "pickFirst": ["**/libc++_shared.so"]
+              "pickFirst": [
+                "**/libc++_shared.so"
+              ]
             }
           },
           "ios": {
             "extraPods": [
               {
                 "name": "simdjson",
-                "configurations": ["Debug", "Release"],
+                "configurations": [
+                  "Debug",
+                  "Release"
+                ],
                 "path": "../../../node_modules/@nozbe/simdjson",
                 "modular_headers": true
               }
@@ -39,7 +44,8 @@
           }
         }
       ],
-      "@lovesworking/watermelondb-expo-plugin-sdk-52-plus"
+      "@lovesworking/watermelondb-expo-plugin-sdk-52-plus",
+      "expo-image"
     ]
   }
 }

@@ -42,3 +42,17 @@ def presign_get(key: str, expires: int = 3600) -> str:
         Params={"Bucket": settings.AWS_STORAGE_BUCKET_NAME, "Key": key},
         ExpiresIn=expires,
     )
+
+
+def public_url(key: str) -> str:
+    """Plain (non-expiring) URL for an object, for use where a presigned GET
+    is actively harmful: the `truerestore-media` bucket is created with
+    anonymous/public read access (see docker-compose.yml's `createbuckets`
+    step), and Job/Post picture URLs get cached indefinitely in the mobile
+    app's on-device SQLite via sync — a presigned URL's ~1h expiry would go
+    stale between syncs and break image display (expired SigV4 auth is
+    rejected before the bucket's anonymous-read policy is ever consulted, so
+    it wouldn't fall back gracefully). `presign_put` is unaffected: uploads
+    are a one-shot, short-lived use where presigning is correct.
+    """
+    return f"{settings.AWS_S3_PUBLIC_ENDPOINT_URL}/{settings.AWS_STORAGE_BUCKET_NAME}/{key}"

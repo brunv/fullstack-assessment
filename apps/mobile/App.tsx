@@ -1,24 +1,27 @@
+import { ApolloProvider } from "@apollo/client";
+import { DatabaseProvider } from "@nozbe/watermelondb/react";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, Text, View } from "react-native";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import React from "react";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import Toast from "react-native-toast-message";
+
+import { apolloClient } from "./src/apollo";
+import { database } from "./src/db";
+import RootNavigator from "./src/navigation/RootNavigator";
+import { SyncProvider } from "./src/sync/SyncContext";
 
 export default function App() {
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.container}>
-        <StatusBar style="auto" />
-        <View style={styles.content}>
-          <Text style={styles.title}>TrueRestore</Text>
-          <Text style={styles.subtitle}>Start building here.</Text>
-        </View>
-      </SafeAreaView>
+      <ApolloProvider client={apolloClient}>
+        <DatabaseProvider database={database}>
+          <SyncProvider>
+            <StatusBar style="auto" />
+            <RootNavigator />
+            <Toast />
+          </SyncProvider>
+        </DatabaseProvider>
+      </ApolloProvider>
     </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  content: { flex: 1, justifyContent: "center", alignItems: "center", padding: 16 },
-  title: { fontSize: 24, fontWeight: "600", marginBottom: 8 },
-  subtitle: { fontSize: 16, color: "#888" },
-});

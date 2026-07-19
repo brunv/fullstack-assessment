@@ -1,6 +1,10 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    // WatermelonDB models use legacy-style decorators (@field, @date, ...),
+    // matching babel.config.js's `@babel/plugin-proposal-decorators` legacy
+    // mode.
+    "experimentalDecorators": true
   }
 }
