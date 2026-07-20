@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { PostCard } from "@/components/PostCard";
 import { PostDetailModal } from "@/components/PostDetailModal";
 import { Skeleton } from "@/components/Skeleton";
-import { StatusSelect } from "@/components/StatusSelect";
+import { StatusDropdown } from "@/components/StatusDropdown";
 import {
   DELETE_POST,
   JOB_QUERY,
@@ -92,7 +92,7 @@ export default function JobDetailsPage({ params }: { params: { id: string } }) {
             <div>
               <h1 className="text-2xl font-semibold text-[var(--color-ink)]">{data.job.title}</h1>
               <div className="mt-3">
-                <StatusSelect status={data.job.status} onChange={handleStatusChange} />
+                <StatusDropdown status={data.job.status} onChange={handleStatusChange} />
               </div>
             </div>
             <button

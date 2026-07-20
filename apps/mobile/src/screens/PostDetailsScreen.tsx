@@ -13,7 +13,7 @@ import { useSync } from "../sync/SyncContext";
 import type { Status } from "../status";
 import { colors, radius, spacing } from "../theme";
 import { formatRelativeTime } from "../utils/formatRelativeTime";
-import StatusPicker from "./components/StatusPicker";
+import StatusDropdown from "./components/StatusDropdown";
 
 // Typed against the shared params shape rather than a specific stack's
 // param list — this screen is registered in both HomeStackNavigator and
@@ -75,7 +75,7 @@ export default function PostDetailsScreen({ route }: Props) {
       <Text style={styles.date}>{formatRelativeTime(post.createdAt)}</Text>
 
       <Text style={styles.statusLabel}>Status</Text>
-      <StatusPicker status={post.status} onChange={handleStatusChange} />
+      <StatusDropdown status={post.status} onChange={handleStatusChange} />
     </ScrollView>
   );
 }

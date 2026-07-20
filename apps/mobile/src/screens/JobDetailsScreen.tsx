@@ -24,7 +24,7 @@ import { createPost, deletePost, updateJobStatus } from "../db/mutations";
 import type { HomeStackParamList } from "../navigation/types";
 import CreatePostModal from "./components/CreatePostModal";
 import PostRow from "./components/PostRow";
-import StatusPicker from "./components/StatusPicker";
+import StatusDropdown from "./components/StatusDropdown";
 import { useSync } from "../sync/SyncContext";
 import { compareByStatus, type Status } from "../status";
 import { colors, radius, spacing } from "../theme";
@@ -136,7 +136,7 @@ export default function JobDetailsScreen({ route }: Props) {
       {job && (
         <View style={styles.statusSection}>
           <Text style={styles.statusLabel}>Status</Text>
-          <StatusPicker status={job.status} onChange={handleStatusChange} />
+          <StatusDropdown status={job.status} onChange={handleStatusChange} />
         </View>
       )}
       {posts.length === 0 ? (

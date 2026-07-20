@@ -11,7 +11,7 @@ import {
   type UpdatePostStatusVars,
 } from "@/graphql/operations";
 import { Modal } from "./Modal";
-import { StatusSelect } from "./StatusSelect";
+import { StatusDropdown } from "./StatusDropdown";
 
 type Props = {
   post: Post | null;
@@ -64,7 +64,7 @@ export function PostDetailModal({ post, onClose }: Props) {
             {new Date(post.createdAt).toLocaleString()}
           </p>
           <div className="mt-4">
-            <StatusSelect status={post.status} onChange={handleStatusChange} />
+            <StatusDropdown status={post.status} onChange={handleStatusChange} />
           </div>
         </>
       )}

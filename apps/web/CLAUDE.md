@@ -31,10 +31,10 @@ apps/web/
     components/
       Modal.tsx, EmptyState.tsx, Skeleton.tsx   generic UI primitives (Modal takes a size: "md" | "lg" prop)
       Sidebar.tsx                                 left nav: Home / Posts links
-      StatusBadge.tsx, StatusSelect.tsx          read-only tag vs. dual-purpose 3-way control (mirrors mobile's pair — see "Status" below)
+      StatusBadge.tsx, StatusSelect.tsx, StatusDropdown.tsx   read-only tag / filter-tab control / edit dropdown — three separate components, not one dual-purpose one (mirrors mobile's trio — see "Status" below)
       JobCard.tsx, PostCard.tsx, PostSearchCard.tsx  list row presentational components (PostCard/PostSearchCard rows are clickable → detail modal)
       CreateJobDialog.tsx, CreatePostDialog.tsx  self-contained forms (own mutation + refetch)
-      PostDetailModal.tsx                        size="lg" Modal: image + job title (when opened from AllPosts search) + description + StatusSelect
+      PostDetailModal.tsx                        size="lg" Modal: image + job title (when opened from AllPosts search) + description + StatusDropdown
 ```
 
 There is no Project/Image reference UI on the web side (that slice is
@@ -101,21 +101,24 @@ starts `"new"` (server-side model default; `createJob`/`createPost`'s
 selection sets include `status` so it's in the cache from the moment of
 creation, not just after a refetch).
 
-`StatusSelect` (3-segment control) is used for **two different purposes**
-depending on where it's mounted, same component either way — its props
-(`status`, `onChange`, `disabled?`) don't encode which mode it's in:
-- **`page.tsx` (Home)**: filters the Job list into three tabs, backed by a
-  plain `useState<Status>("new")` and a `useMemo` filter over the single
-  `JOBS_QUERY` result — not three separate queries, so there's only ever one
-  thing to refetch/revalidate regardless of which tab is active.
+Filtering and editing are two different components now — they used to share
+`StatusSelect`, but a 3-segment control that looks identical to a list's
+filter tabs was a confusing way to edit one record's status, so editing was
+split out into `StatusDropdown` (native `<select>`, styled to match the rest
+of the UI):
+- **`page.tsx` (Home)**: `StatusSelect` (3-segment control) filters the Job
+  list into three tabs, backed by a plain `useState<Status>("new")` and a
+  `useMemo` filter over the single `JOBS_QUERY` result — not three separate
+  queries, so there's only ever one thing to refetch/revalidate regardless of
+  which tab is active.
 - **`jobs/[id]/page.tsx`** (editing the Job's own status) and inside
   **`PostDetailModal.tsx`** (editing the Post's status, wired directly in
-  the modal since it's the only place Post status is edited) — status is
-  only ever *edited* from a detail view, never from a list row; list rows
-  (`JobCard`/`PostCard`/`PostSearchCard`) only ever render the read-only
-  `StatusBadge`. A
-  Job's Post list (`jobs/[id]/page.tsx`) is **not** tabbed like Home's Job
-  list — one combined array, sorted client-side
+  the modal since it's the only place Post status is edited) — both use
+  `StatusDropdown`. Status is only ever *edited* from a detail view, never
+  from a list row; list rows (`JobCard`/`PostCard`/`PostSearchCard`) only
+  ever render the read-only `StatusBadge`. A Job's Post list
+  (`jobs/[id]/page.tsx`) is **not** tabbed like Home's Job list — one
+  combined array, sorted client-side
   (`[...data.job.posts].sort((a,b) => compareByStatus(a,b) || ...)`) rather
   than filtered, so all of a job's posts are visible at once regardless of
   status.

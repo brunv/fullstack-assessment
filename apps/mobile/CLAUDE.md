@@ -42,7 +42,7 @@ apps/mobile/
       PostDetailsScreen.tsx     Full-size image + job title + description for one post, observed by id (shared by both stacks)
       AllPostsScreen.tsx        Cross-job Post search (PostsTab) — text search over description, one flat list
       components/JobRow.tsx, PostRow.tsx, PostSearchRow.tsx, CreatePostModal.tsx,
-                 StatusBadge.tsx (read-only tag), StatusPicker.tsx (dual-purpose 3-way control — edit or filter, see "Status" below)
+                 StatusBadge.tsx (read-only tag), StatusPicker.tsx (filter-tab control), StatusDropdown.tsx (edit bottom sheet, see "Status" below)
     utils/
       pickImage.ts              camera/library pick → resize/compress → persist to FileSystem.documentDirectory
       formatRelativeTime.ts
@@ -167,8 +167,8 @@ set at create time, not declared in `schema.ts`. `STATUS_PRIORITY`/
 Status shows up in the UI two different ways, deliberately not the same
 pattern in both places:
 - **`HomeScreen`**: the Job list is split into three tabs (New / In
-  Progress / Complete, `StatusPicker` reused as a filter control — see
-  below), default tab `"new"`. There's exactly **one** WatermelonDB
+  Progress / Complete, via `StatusPicker` — see below), default tab `"new"`.
+  There's exactly **one** WatermelonDB
   subscription behind all three tabs (`jobsCollection.query(...).observe()`
   in a single `useEffect`); switching tabs only changes a local
   `useMemo`-filtered view over that same array. This matters for
@@ -182,19 +182,23 @@ pattern in both places:
   wrapping the `foundJob.posts.observe()` subscription.
 
 `StatusBadge.tsx` (read-only tag, used in `JobRow`/`PostRow`/`PostSearchRow`)
-is purely presentational. `StatusPicker.tsx` (3-segment control) is used for **two
-different purposes** depending on where it's mounted — editing a single
-record's status (`JobDetailsScreen` for the Job, `PostDetailsScreen` for the
-Post — status is only ever *edited* from a detail screen, never from a list
-row) vs. filtering Home's Job list (a plain local `useState<Status>`, no
-persistence, no WatermelonDB write). Same component either way — its props
-(`status`, `onChange`, `disabled?`) don't encode which mode it's in, that's
-purely up to what the caller does in `onChange`. Both detail screens
-re-observe their subject (`foundJob.observe().subscribe(setJob)` / existing
-`post.observe()`) specifically so an edit re-renders — `.update()` mutates
-the WatermelonDB model in place, which doesn't itself trigger a React
-re-render without a subscription. `updateJobStatus`/`updatePostStatus`
-(`db/mutations.ts`) are plain local writes like any other mutation here, then
+is purely presentational. Filtering and editing are two separate components
+— they used to share `StatusPicker`, but a 3-segment control that looks
+identical to Home's filter tabs was a confusing way to edit one record's
+status, so editing was split out into `StatusDropdown.tsx` (a trigger button
+showing the current value + chevron, opening a bottom-sheet `Modal` with the
+three options — simplest option given `Modal` was already used elsewhere,
+e.g. `CreatePostModal.tsx`). `StatusPicker.tsx` is now used **only** for
+filtering Home's Job list (a plain local `useState<Status>`, no persistence,
+no WatermelonDB write); `StatusDropdown.tsx` is used **only** for editing a
+single record's status (`JobDetailsScreen` for the Job, `PostDetailsScreen`
+for the Post — status is only ever *edited* from a detail screen, never from
+a list row). Both detail screens re-observe their subject
+(`foundJob.observe().subscribe(setJob)` / existing `post.observe()`)
+specifically so an edit re-renders — `.update()` mutates the WatermelonDB
+model in place, which doesn't itself trigger a React re-render without a
+subscription. `updateJobStatus`/`updatePostStatus` (`db/mutations.ts`) are
+plain local writes like any other mutation here, then
 `triggerSync({ silent: true })` — no direct GraphQL call, consistent with
 mobile's local-first-then-sync write path for everything else.
 
