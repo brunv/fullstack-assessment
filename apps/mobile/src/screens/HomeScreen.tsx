@@ -30,7 +30,7 @@ type Nav = NativeStackNavigationProp<HomeStackParamList, "Home">;
 
 export default function HomeScreen() {
   const navigation = useNavigation<Nav>();
-  const { status, triggerSync } = useSync();
+  const { isRefreshing, triggerSync } = useSync();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<Status>("new");
   const [modalVisible, setModalVisible] = useState(false);
@@ -78,7 +78,7 @@ export default function HomeScreen() {
   // full sync (all Jobs, all Posts), never scoped to just the active tab.
   const refreshControl = (
     <RefreshControl
-      refreshing={status === "syncing"}
+      refreshing={isRefreshing}
       onRefresh={() => triggerSync()}
       tintColor={colors.primary}
       colors={[colors.primary]}

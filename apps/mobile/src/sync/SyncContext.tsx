@@ -26,6 +26,11 @@ type TriggerOptions = {
 
 type SyncContextValue = {
   status: SyncStatus;
+  /** True only while a *user-initiated* (non-silent) sync is in flight —
+   * i.e. pull-to-refresh. Background triggers (create/delete, app-foreground,
+   * connectivity-restored) also flip `status` to "syncing", but must not
+   * spin a refresh control the user never pulled. */
+  isRefreshing: boolean;
   triggerSync: (options?: TriggerOptions) => void;
 };
 
@@ -35,6 +40,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const [jobsPending, setJobsPending] = useState(0);
   const [postsPending, setPostsPending] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     const jobsSub = jobsCollection
@@ -74,7 +80,9 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      const isManual = !options.silent;
       setIsSyncing(true);
+      if (isManual) setIsRefreshing(true);
       syncDatabase()
         .catch((err) => {
           Toast.show({
@@ -83,7 +91,10 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
             text2: err instanceof Error ? err.message : "Please try again.",
           });
         })
-        .finally(() => setIsSyncing(false));
+        .finally(() => {
+          setIsSyncing(false);
+          if (isManual) setIsRefreshing(false);
+        });
     });
   }, []);
 
@@ -110,7 +121,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   }, [triggerSync]);
 
   return (
-    <SyncContext.Provider value={{ status, triggerSync }}>
+    <SyncContext.Provider value={{ status, isRefreshing, triggerSync }}>
       {children}
     </SyncContext.Provider>
   );

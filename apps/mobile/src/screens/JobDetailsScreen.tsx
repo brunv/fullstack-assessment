@@ -45,7 +45,7 @@ function sortPosts(list: Post[]): Post[] {
 export default function JobDetailsScreen({ route }: Props) {
   const { jobId } = route.params;
   const navigation = useNavigation<Nav>();
-  const { status, triggerSync } = useSync();
+  const { isRefreshing, triggerSync } = useSync();
   const [job, setJob] = useState<Job | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
@@ -175,7 +175,7 @@ export default function JobDetailsScreen({ route }: Props) {
 
   const refreshControl = (
     <RefreshControl
-      refreshing={status === "syncing"}
+      refreshing={isRefreshing}
       onRefresh={() => triggerSync()}
       tintColor={colors.primary}
       colors={[colors.primary]}

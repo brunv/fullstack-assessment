@@ -106,15 +106,24 @@ other sync failure), not a special case.
 
 `useSync()` exposes `status: 'synced' | 'pending' | 'syncing'` (derived by
 observing `Q.where('_status', Q.notEq('synced'))` counts on both
-collections) and `triggerSync({ silent? })`. Background triggers (create,
-delete, `AppState` → `active`, `NetInfo` offline→online transition) pass
-`silent: true` and skip quietly when offline (expected state, not an error —
-already visible via the pending/cloud-slash icons). Manual trigger is
-**pull-to-refresh** on `HomeScreen`/`JobDetailsScreen` — no
-`silent`, so it shows an info toast if offline — via a shared `refreshControl` element
-(`refreshing={status === "syncing"}`, `onRefresh={() => triggerSync()}`)
-passed to whichever container is currently rendered. Both screens branch on
-`list.length === 0`: with items, a `FlatList` renders normally; empty, a
+collections), `isRefreshing: boolean`, and `triggerSync({ silent? })`.
+Background triggers (create, delete, `AppState` → `active`, `NetInfo`
+offline→online transition) pass `silent: true` and skip quietly when
+offline (expected state, not an error — already visible via the
+pending/cloud-slash icons). **`status` and `isRefreshing` are deliberately
+separate flags**: `status` flips to `"syncing"` for *any* in-flight sync,
+background or manual, but `isRefreshing` is only set while a sync triggered
+*without* `silent` (i.e. pull-to-refresh) is running. Every
+`RefreshControl` across the app binds to `isRefreshing`, not `status` — an
+app-foreground or connectivity-restored sync firing in the background must
+not spin a refresh control the user never pulled (was a real bug: any
+background sync made every list's pull-to-refresh spinner appear on its
+own). Manual trigger is **pull-to-refresh** on `HomeScreen`/
+`JobDetailsScreen`/`AllPostsScreen` — no `silent`, so it shows an info toast
+if offline — via a shared `refreshControl` element (`refreshing={isRefreshing}`,
+`onRefresh={() => triggerSync()}`) passed to whichever container is
+currently rendered. All three screens branch on `list.length === 0`: with
+items, a `FlatList` renders normally; empty, a
 plain `ScrollView` (`contentContainerStyle: styles.emptyList`, `flexGrow: 1`)
 wraps the empty-state `View` instead. This isn't just for centering —
 `FlatList`'s `ListEmptyComponent` + `refreshControl` does **not** reliably

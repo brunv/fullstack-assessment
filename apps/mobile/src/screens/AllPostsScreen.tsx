@@ -24,7 +24,7 @@ type Nav = NativeStackNavigationProp<PostsStackParamList, "AllPosts">;
 
 export default function AllPostsScreen() {
   const navigation = useNavigation<Nav>();
-  const { status, triggerSync } = useSync();
+  const { isRefreshing, triggerSync } = useSync();
   const [posts, setPosts] = useState<Post[]>([]);
   const [query, setQuery] = useState("");
 
@@ -44,7 +44,7 @@ export default function AllPostsScreen() {
 
   const refreshControl = (
     <RefreshControl
-      refreshing={status === "syncing"}
+      refreshing={isRefreshing}
       onRefresh={() => triggerSync()}
       tintColor={colors.primary}
       colors={[colors.primary]}
