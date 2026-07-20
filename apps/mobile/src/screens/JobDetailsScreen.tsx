@@ -20,7 +20,7 @@ import Toast from "react-native-toast-message";
 import { jobsCollection } from "../db";
 import type Job from "../db/models/Job";
 import type Post from "../db/models/Post";
-import { createPost, deletePost, updateJobStatus } from "../db/mutations";
+import { createPost, deleteJob, deletePost, updateJobStatus } from "../db/mutations";
 import type { HomeStackParamList } from "../navigation/types";
 import CreatePostModal from "./components/CreatePostModal";
 import PostRow from "./components/PostRow";
@@ -70,6 +70,57 @@ export default function JobDetailsScreen({ route }: Props) {
       postsSubscription?.unsubscribe();
     };
   }, [jobId]);
+
+  const handleDeleteJob = () => {
+    if (!job) return;
+    const postCount = posts.length;
+    Alert.alert(
+      "Delete job?",
+      postCount > 0
+        ? `This will also delete ${postCount} post${postCount === 1 ? "" : "s"}.`
+        : "This can't be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteJob(job);
+              triggerSync({ silent: true });
+              navigation.goBack();
+            } catch (err) {
+              Toast.show({
+                type: "error",
+                text1: "Couldn't delete job",
+                text2: err instanceof Error ? err.message : "Please try again.",
+              });
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // Header-right icon rather than a row button — deleting a Job now only
+  // happens from its own detail screen, not from Home's list (moved per
+  // explicit direction).
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: job
+        ? () => (
+            <Pressable
+              hitSlop={8}
+              onPress={handleDeleteJob}
+              style={styles.headerDeleteButton}
+              accessibilityLabel="Delete job"
+            >
+              <Ionicons name="trash-outline" size={22} color={colors.danger} />
+            </Pressable>
+          )
+        : undefined,
+    });
+  }, [navigation, job, posts.length]);
 
   const handleStatusChange = async (nextStatus: Status) => {
     if (!job) return;
@@ -237,4 +288,5 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   addButtonText: { color: colors.primaryText, fontWeight: "600", fontSize: 15 },
+  headerDeleteButton: { padding: spacing.xs, marginRight: spacing.xs },
 });

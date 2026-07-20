@@ -4,7 +4,6 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -19,7 +18,7 @@ import Toast from "react-native-toast-message";
 
 import { jobsCollection } from "../db";
 import type Job from "../db/models/Job";
-import { createJob, deleteJob } from "../db/mutations";
+import { createJob } from "../db/mutations";
 import type { HomeStackParamList } from "../navigation/types";
 import JobRow from "./components/JobRow";
 import StatusPicker from "./components/StatusPicker";
@@ -75,34 +74,6 @@ export default function HomeScreen() {
     }
   };
 
-  const handleDelete = (job: Job, postCount: number) => {
-    Alert.alert(
-      "Delete job?",
-      postCount > 0
-        ? `This will also delete ${postCount} post${postCount === 1 ? "" : "s"}.`
-        : "This can't be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteJob(job);
-              triggerSync({ silent: true });
-            } catch (err) {
-              Toast.show({
-                type: "error",
-                text1: "Couldn't delete job",
-                text2: err instanceof Error ? err.message : "Please try again.",
-              });
-            }
-          },
-        },
-      ],
-    );
-  };
-
   // One shared control for the whole screen — pulling always triggers a
   // full sync (all Jobs, all Posts), never scoped to just the active tab.
   const refreshControl = (
@@ -154,7 +125,6 @@ export default function HomeScreen() {
               onPress={() =>
                 navigation.navigate("JobDetails", { jobId: item.id, jobTitle: item.title })
               }
-              onDelete={handleDelete}
             />
           )}
         />

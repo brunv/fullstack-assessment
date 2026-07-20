@@ -37,8 +37,8 @@ apps/mobile/
       HomeStackNavigator.tsx      native-stack: Home → JobDetails → PostDetails
       PostsStackNavigator.tsx     native-stack: AllPosts → PostDetails
     screens/
-      HomeScreen.tsx            Job list filtered by New/In Progress/Complete tabs, FAB → create modal, delete w/ confirm
-      JobDetailsScreen.tsx      One combined Post list for a job (sorted by status, not tabbed), add-post button, delete w/ confirm
+      HomeScreen.tsx            Job list filtered by New/In Progress/Complete tabs, FAB → create modal (no delete here — see JobDetailsScreen)
+      JobDetailsScreen.tsx      One combined Post list for a job (sorted by status, not tabbed), add-post button, delete-post w/ confirm, delete-job (header-right icon) w/ confirm
       PostDetailsScreen.tsx     Full-size image + job title + description for one post, observed by id (shared by both stacks)
       AllPostsScreen.tsx        Cross-job Post search (PostsTab) — text search over description, one flat list
       components/JobRow.tsx, PostRow.tsx, PostSearchRow.tsx, CreatePostModal.tsx,

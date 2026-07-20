@@ -9,10 +9,9 @@ import StatusBadge from "./StatusBadge";
 type Props = {
   job: Job;
   onPress: () => void;
-  onDelete: (job: Job, postCount: number) => void;
 };
 
-export default function JobRow({ job, onPress, onDelete }: Props) {
+export default function JobRow({ job, onPress }: Props) {
   const [postCount, setPostCount] = useState(0);
 
   useEffect(() => {
@@ -45,14 +44,6 @@ export default function JobRow({ job, onPress, onDelete }: Props) {
           <StatusBadge status={job.status} />
         </View>
       </View>
-      <Pressable
-        hitSlop={8}
-        onPress={() => onDelete(job, postCount)}
-        style={styles.deleteButton}
-        accessibilityLabel={`Delete ${job.title}`}
-      >
-        <Ionicons name="trash-outline" size={20} color={colors.danger} />
-      </Pressable>
       <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
     </Pressable>
   );
@@ -75,5 +66,4 @@ const styles = StyleSheet.create({
   pendingIcon: { marginLeft: spacing.xs },
   subtitle: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   badgeRow: { marginTop: spacing.xs },
-  deleteButton: { padding: spacing.xs, marginRight: spacing.xs },
 });
