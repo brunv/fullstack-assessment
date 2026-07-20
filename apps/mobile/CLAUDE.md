@@ -29,14 +29,17 @@ apps/mobile/
       sync.ts                  syncDatabase(): picture pre-pass → synchronize() with retry-once, in-flight guard
     sync/
       SyncContext.tsx          useSync() hook: status (synced/pending/syncing), triggerSync(), AppState + NetInfo triggers
-      SyncHeaderButton.tsx      nav-header icon reflecting sync status
     navigation/
-      types.ts, RootNavigator.tsx   native-stack: Home, JobDetails, PostDetails
+      types.ts                  HomeStackParamList, PostsStackParamList, RootTabParamList, shared PostDetailsParams
+      RootNavigator.tsx          bottom-tab root (Home, Posts), headerShown: false — each tab owns its own stack header
+      HomeStackNavigator.tsx     native-stack: Home, JobDetails, PostDetails
+      PostsStackNavigator.tsx    native-stack: AllPosts, PostDetails
     screens/
       HomeScreen.tsx            Job list (observed), FAB → create modal, delete w/ confirm
       JobDetailsScreen.tsx      Post list for a job (rows tappable → PostDetails), add-post button, delete w/ confirm
-      PostDetailsScreen.tsx     Full-size image + description for one post, observed by id
-      components/JobRow.tsx, PostRow.tsx, CreatePostModal.tsx
+      AllPostsScreen.tsx        All posts across every job (observed, no job_id filter), search bar, pull-to-refresh
+      PostDetailsScreen.tsx     Full-size image + job title + description for one post, observed by id
+      components/JobRow.tsx, PostRow.tsx, PostSearchRow.tsx, CreatePostModal.tsx
     utils/
       pickImage.ts              camera/library pick → resize/compress → persist to FileSystem.documentDirectory
       formatRelativeTime.ts
@@ -88,11 +91,57 @@ observing `Q.where('_status', Q.notEq('synced'))` counts on both
 collections) and `triggerSync({ silent? })`. Background triggers (create,
 delete, `AppState` → `active`, `NetInfo` offline→online transition) pass
 `silent: true` and skip quietly when offline (expected state, not an error —
-already visible via the pending/cloud-slash icons). The manual header button
-(`SyncHeaderButton.tsx`) passes no options, so it shows an info toast if
-offline. Row-level cloud-slash icons (`JobRow`/`PostRow`) read
-`record.syncStatus !== "synced"` directly — re-renders naturally since the
-parent `.observe()` re-emits on any status change.
+already visible via the pending/cloud-slash icons). Manual trigger is
+**pull-to-refresh** on `HomeScreen`/`JobDetailsScreen`/`AllPostsScreen` — no
+`silent`, so it shows an info toast if offline — via a shared `refreshControl` element
+(`refreshing={status === "syncing"}`, `onRefresh={() => triggerSync()}`)
+passed to whichever container is currently rendered. Both screens branch on
+`list.length === 0`: with items, a `FlatList` renders normally; empty, a
+plain `ScrollView` (`contentContainerStyle: styles.emptyList`, `flexGrow: 1`)
+wraps the empty-state `View` instead. This isn't just for centering —
+`FlatList`'s `ListEmptyComponent` + `refreshControl` does **not** reliably
+register the pull gesture when there's no data (a known RN quirk); a real
+`ScrollView` does, regardless of content size, so the empty case gets its
+own scrollable container rather than relying on `ListEmptyComponent`. Both
+the `FlatList` and the `ScrollView` also need an explicit `style={styles.scrollFill}`
+(`flex: 1`) in addition to `contentContainerStyle` — without it, either
+component sizes itself to its *content* height rather than filling the
+screen, so with only a couple of short rows the pullable/refreshable area is
+just that small strip at the top and the rest of the screen is bare
+`container` background with no gesture handling at all (pull-to-refresh
+"only works right on an item"). Row-level cloud-slash icons
+(`JobRow`/`PostRow`) read `record.syncStatus !== "synced"`
+directly — re-renders naturally since the parent `.observe()` re-emits on
+any status change.
+
+## Navigation: bottom tabs + per-tab stack
+
+`RootNavigator.tsx` is a `@react-navigation/bottom-tabs` navigator (pure JS,
+no native module — installing it didn't require a native rebuild, unlike
+`react-native-screens`/`netinfo`/etc. earlier), not a single stack. Two tabs,
+each wrapping its own `native-stack`: **Home** (`HomeStackNavigator`: Home →
+JobDetails → PostDetails) and **Posts** (`PostsStackNavigator`: AllPosts →
+PostDetails). `headerShown: false` at the tab level — headers are owned by
+each stack so switching tabs doesn't show a double header.
+
+`PostDetailsScreen` is registered in **both** stacks (reachable from a Job's
+post list or from the global search) — since it only reads `route.params`
+and never calls `navigation.navigate` itself, it's typed against the shared
+`PostDetailsParams` shape (`{ route: { params: PostDetailsParams } }`) rather
+than either stack's full `NativeStackScreenProps`, avoiding a union type for
+two navigators that both satisfy it identically.
+
+`AllPostsScreen.tsx`: observes `postsCollection` with **no `job_id` filter**
+(all posts across every job, unlike `JobDetailsScreen` which scopes to one
+job via the `@children` relation), sorted `created_at` desc. Search is
+client-side only — `useMemo` filtering the already-observed array by
+`description.toLowerCase().includes(query)` — no server round-trip, matching
+the offline-first pattern (searching should work with zero connectivity).
+`PostSearchRow.tsx` (vs. plain `PostRow.tsx`) additionally resolves and
+shows the parent job's title per row (`post.job.fetch()` in a `useEffect`,
+since `Relation.fetch()` is async and the job isn't otherwise in scope when
+listing posts globally) — needed for context you'd otherwise get for free
+from being inside a `JobDetails` screen.
 
 ## Image capture/picker
 

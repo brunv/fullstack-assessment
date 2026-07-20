@@ -28,7 +28,12 @@ export function PostDetailModal({ post, onClose }: Props) {
         ))}
       {post && (
         <>
-          <p className="mt-4 whitespace-pre-wrap text-sm text-[var(--color-ink)]">
+          {post.job && (
+            <p className="mt-4 text-xs font-medium text-[var(--color-primary)]">
+              {post.job.title}
+            </p>
+          )}
+          <p className={`whitespace-pre-wrap text-sm text-[var(--color-ink)] ${post.job ? "mt-1" : "mt-4"}`}>
             {post.description || "No description"}
           </p>
           <p className="mt-2 text-xs text-[var(--color-ink-muted)]">

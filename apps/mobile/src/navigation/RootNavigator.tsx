@@ -1,36 +1,47 @@
+import { Ionicons } from "@expo/vector-icons";
 import { NavigationContainer } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import React from "react";
 
-import HomeScreen from "../screens/HomeScreen";
-import JobDetailsScreen from "../screens/JobDetailsScreen";
-import PostDetailsScreen from "../screens/PostDetailsScreen";
-import SyncHeaderButton from "../sync/SyncHeaderButton";
+import HomeStackNavigator from "./HomeStackNavigator";
+import PostsStackNavigator from "./PostsStackNavigator";
 import { colors } from "../theme";
-import type { RootStackParamList } from "./types";
+import type { RootTabParamList } from "./types";
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator<RootTabParamList>();
 
 export default function RootNavigator() {
   return (
     <NavigationContainer>
-      <Stack.Navigator
+      <Tab.Navigator
         screenOptions={{
-          headerStyle: { backgroundColor: colors.surface },
-          headerTitleStyle: { color: colors.text },
-          headerShadowVisible: false,
-          headerRight: () => <SyncHeaderButton />,
-          contentStyle: { backgroundColor: colors.background },
+          headerShown: false,
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.textMuted,
+          tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
         }}
       >
-        <Stack.Screen name="Home" component={HomeScreen} options={{ title: "Jobs" }} />
-        <Stack.Screen
-          name="JobDetails"
-          component={JobDetailsScreen}
-          options={({ route }) => ({ title: route.params.jobTitle })}
+        <Tab.Screen
+          name="HomeTab"
+          component={HomeStackNavigator}
+          options={{
+            title: "Home",
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons name={focused ? "home" : "home-outline"} size={size} color={color} />
+            ),
+          }}
         />
-        <Stack.Screen name="PostDetails" component={PostDetailsScreen} options={{ title: "Post" }} />
-      </Stack.Navigator>
+        <Tab.Screen
+          name="PostsTab"
+          component={PostsStackNavigator}
+          options={{
+            title: "Posts",
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons name={focused ? "images" : "images-outline"} size={size} color={color} />
+            ),
+          }}
+        />
+      </Tab.Navigator>
     </NavigationContainer>
   );
 }

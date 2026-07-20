@@ -17,19 +17,22 @@ apps/web/
   .env.local              NEXT_PUBLIC_GRAPHQL_URL (untracked, gitignored)
   src/
     app/
-      layout.tsx             RootLayout: header bar, <Providers>, <Toaster/> (sonner)
+      layout.tsx             RootLayout: <Sidebar/> + content column, <Providers>, <Toaster/> (sonner)
       page.tsx                Home: Jobs list, create/delete Job
       providers.tsx            Apollo client/provider setup
       globals.css               imports tailwindcss + theme.css, sets body bg/color
       theme.css                  Tailwind v4 @theme design tokens (colors, spacing, radii) — wired in
       jobs/[id]/page.tsx        Job details: Posts list, add/delete Post
-    graphql/operations.ts    gql queries/mutations + hand-written TS types (Job, Post, ...)
+      posts/page.tsx             All posts across every job + client-side description search
+    graphql/operations.ts    gql queries/mutations + hand-written TS types (Job, Post, PostJob, ...)
     lib/uploadPicture.ts     presign → PUT to MinIO → returns {key, contentType}
     components/
+      Sidebar.tsx                              left nav (Home/Posts), active state via usePathname()
       Modal.tsx, EmptyState.tsx, Skeleton.tsx   generic UI primitives (Modal takes a size: "md" | "lg" prop)
       JobCard.tsx, PostCard.tsx                  list row presentational components (PostCard row is clickable → detail modal)
+      PostSearchCard.tsx                         posts/page.tsx's row — shows the parent job's title, no delete button
       CreateJobDialog.tsx, CreatePostDialog.tsx  self-contained forms (own mutation + refetch)
-      PostDetailModal.tsx                        size="lg" Modal showing a post's full image + description
+      PostDetailModal.tsx                        size="lg" Modal showing a post's full image + job title + description
 ```
 
 There is no Project/Image reference UI on the web side (that slice is
@@ -77,6 +80,26 @@ revisit shows cached data instantly while revalidating.
 
 No delete-confirmation modal component — uses the browser's native
 `window.confirm()`, mirroring mobile's use of the native `Alert.alert`.
+
+## Navigation + Posts search page
+
+`layout.tsx` renders a persistent left `<Sidebar/>` (Home/Posts) alongside a
+`flex-1` content column instead of a top header bar — every page's own
+`<main>` renders directly into that column, so don't add a second `<main>`
+per page.
+
+`/posts` (`src/app/posts/page.tsx`) queries `ALL_POSTS_QUERY` → API's
+`Query.posts` (`apps/api/core/schema.py`, all non-deleted posts across every
+job, `select_related("job")` to avoid an N+1), then filters client-side with
+`useMemo` on `description.toLowerCase().includes(query)` — no server-side
+search, matches the dataset size and mirrors mobile's `AllPostsScreen`
+(same filtering approach, same reason: no search infrastructure needed at
+this scale). `PostSearchCard` shows the parent job's title (from the same
+query, via `Post.job`) since — unlike `/jobs/[id]` — the job isn't otherwise
+implied by being on this page. Clicking a card opens the same
+`PostDetailModal` used by `/jobs/[id]`, which now also renders `post.job.title`
+when present (harmless no-op when absent, e.g. Home's job-scoped query
+doesn't fetch `job` on its posts).
 
 ## Running
 

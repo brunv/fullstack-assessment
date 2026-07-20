@@ -8,6 +8,8 @@ import {
   FlatList,
   Modal,
   Pressable,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -18,16 +20,16 @@ import Toast from "react-native-toast-message";
 import { jobsCollection } from "../db";
 import type Job from "../db/models/Job";
 import { createJob, deleteJob } from "../db/mutations";
-import type { RootStackParamList } from "../navigation/types";
+import type { HomeStackParamList } from "../navigation/types";
 import JobRow from "./components/JobRow";
 import { useSync } from "../sync/SyncContext";
 import { colors, radius, spacing } from "../theme";
 
-type Nav = NativeStackNavigationProp<RootStackParamList, "Home">;
+type Nav = NativeStackNavigationProp<HomeStackParamList, "Home">;
 
 export default function HomeScreen() {
   const navigation = useNavigation<Nav>();
-  const { triggerSync } = useSync();
+  const { status, triggerSync } = useSync();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [title, setTitle] = useState("");
@@ -89,19 +91,39 @@ export default function HomeScreen() {
     );
   };
 
+  const refreshControl = (
+    <RefreshControl
+      refreshing={status === "syncing"}
+      onRefresh={() => triggerSync()}
+      tintColor={colors.primary}
+      colors={[colors.primary]}
+    />
+  );
+
   return (
     <View style={styles.container}>
       {jobs.length === 0 ? (
-        <View style={styles.empty}>
-          <Ionicons name="briefcase-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.emptyTitle}>No jobs yet</Text>
-          <Text style={styles.emptySubtitle}>Tap the + button to create your first job</Text>
-        </View>
+        // A ScrollView reliably supports pull-to-refresh regardless of
+        // content size; FlatList's ListEmptyComponent + refreshControl does
+        // not consistently register the pull gesture when there's no data.
+        <ScrollView
+          style={styles.scrollFill}
+          contentContainerStyle={styles.emptyList}
+          refreshControl={refreshControl}
+        >
+          <View style={styles.empty}>
+            <Ionicons name="briefcase-outline" size={48} color={colors.textMuted} />
+            <Text style={styles.emptyTitle}>No jobs yet</Text>
+            <Text style={styles.emptySubtitle}>Tap the + button to create your first job</Text>
+          </View>
+        </ScrollView>
       ) : (
         <FlatList
+          style={styles.scrollFill}
           data={jobs}
           keyExtractor={(job) => job.id}
           contentContainerStyle={styles.list}
+          refreshControl={refreshControl}
           renderItem={({ item }) => (
             <JobRow
               job={item}
@@ -157,7 +179,13 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  // Applied as `style` (not contentContainerStyle) on the FlatList/ScrollView
+  // themselves — without it they size to their content instead of filling
+  // the screen, so pull-to-refresh only works when touching that small
+  // content area rather than anywhere on screen.
+  scrollFill: { flex: 1 },
   list: { padding: spacing.lg },
+  emptyList: { flexGrow: 1 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl },
   emptyTitle: { fontSize: 17, fontWeight: "600", color: colors.text, marginTop: spacing.md },
   emptySubtitle: {

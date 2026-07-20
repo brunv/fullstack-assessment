@@ -1,11 +1,14 @@
 import { gql } from "@apollo/client";
 
+export type PostJob = { id: string; title: string };
+
 export type Post = {
   id: string;
   description: string;
   pictureUrl: string | null;
   pictureContentType: string;
   createdAt: string;
+  job?: PostJob;
 };
 
 export type Job = {
@@ -47,6 +50,23 @@ export const JOB_QUERY = gql`
 `;
 export type JobQueryResult = { job: Job | null };
 export type JobQueryVars = { id: string };
+
+export const ALL_POSTS_QUERY = gql`
+  query AllPosts {
+    posts {
+      id
+      description
+      pictureUrl
+      pictureContentType
+      createdAt
+      job {
+        id
+        title
+      }
+    }
+  }
+`;
+export type AllPostsQueryResult = { posts: Post[] };
 
 export const CREATE_JOB = gql`
   mutation CreateJob($title: String!) {

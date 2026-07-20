@@ -5,26 +5,35 @@ import type {
   NativeStackScreenProps,
 } from "@react-navigation/native-stack";
 import React, { useEffect, useState } from "react";
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import Toast from "react-native-toast-message";
 
 import { jobsCollection } from "../db";
 import type Job from "../db/models/Job";
 import type Post from "../db/models/Post";
 import { createPost, deletePost } from "../db/mutations";
-import type { RootStackParamList } from "../navigation/types";
+import type { HomeStackParamList } from "../navigation/types";
 import CreatePostModal from "./components/CreatePostModal";
 import PostRow from "./components/PostRow";
 import { useSync } from "../sync/SyncContext";
 import { colors, radius, spacing } from "../theme";
 
-type Props = NativeStackScreenProps<RootStackParamList, "JobDetails">;
-type Nav = NativeStackNavigationProp<RootStackParamList, "JobDetails">;
+type Props = NativeStackScreenProps<HomeStackParamList, "JobDetails">;
+type Nav = NativeStackNavigationProp<HomeStackParamList, "JobDetails">;
 
 export default function JobDetailsScreen({ route }: Props) {
   const { jobId } = route.params;
   const navigation = useNavigation<Nav>();
-  const { triggerSync } = useSync();
+  const { status, triggerSync } = useSync();
   const [job, setJob] = useState<Job | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
@@ -80,19 +89,39 @@ export default function JobDetailsScreen({ route }: Props) {
     ]);
   };
 
+  const refreshControl = (
+    <RefreshControl
+      refreshing={status === "syncing"}
+      onRefresh={() => triggerSync()}
+      tintColor={colors.primary}
+      colors={[colors.primary]}
+    />
+  );
+
   return (
     <View style={styles.container}>
       {posts.length === 0 ? (
-        <View style={styles.empty}>
-          <Ionicons name="images-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.emptyTitle}>No posts yet</Text>
-          <Text style={styles.emptySubtitle}>Add a post to start documenting this job</Text>
-        </View>
+        // A ScrollView reliably supports pull-to-refresh regardless of
+        // content size; FlatList's ListEmptyComponent + refreshControl does
+        // not consistently register the pull gesture when there's no data.
+        <ScrollView
+          style={styles.scrollFill}
+          contentContainerStyle={styles.emptyList}
+          refreshControl={refreshControl}
+        >
+          <View style={styles.empty}>
+            <Ionicons name="images-outline" size={48} color={colors.textMuted} />
+            <Text style={styles.emptyTitle}>No posts yet</Text>
+            <Text style={styles.emptySubtitle}>Add a post to start documenting this job</Text>
+          </View>
+        </ScrollView>
       ) : (
         <FlatList
+          style={styles.scrollFill}
           data={posts}
           keyExtractor={(post) => post.id}
           contentContainerStyle={styles.list}
+          refreshControl={refreshControl}
           renderItem={({ item }) => (
             <PostRow
               post={item}
@@ -124,7 +153,13 @@ export default function JobDetailsScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  // Applied as `style` (not contentContainerStyle) on the FlatList/ScrollView
+  // themselves — without it they size to their content instead of filling
+  // the screen, so pull-to-refresh only works when touching that small
+  // content area rather than anywhere on screen.
+  scrollFill: { flex: 1 },
   list: { padding: spacing.lg, paddingBottom: 96 },
+  emptyList: { flexGrow: 1 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl },
   emptyTitle: { fontSize: 17, fontWeight: "600", color: colors.text, marginTop: spacing.md },
   emptySubtitle: {

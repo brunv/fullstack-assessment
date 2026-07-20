@@ -71,6 +71,7 @@ class Query(graphene.ObjectType):
     project = graphene.Field(ProjectType, id=graphene.ID(required=True))
     jobs = graphene.List(JobType)
     job = graphene.Field(JobType, id=graphene.ID(required=True))
+    posts = graphene.List(PostType)
 
     def resolve_projects(self, info):
         return Project.objects.all()
@@ -83,6 +84,13 @@ class Query(graphene.ObjectType):
 
     def resolve_job(self, info, id):
         return Job.objects.filter(pk=id, is_deleted=False).first()
+
+    def resolve_posts(self, info):
+        # All posts across all jobs — backs the web "Posts" page and mirrors
+        # what mobile's Posts tab reads locally (postsCollection with no
+        # job_id filter). select_related avoids an N+1 when the client asks
+        # for `job { title }` on each row.
+        return Post.objects.filter(is_deleted=False).select_related("job")
 
 
 # Note: none of the mutations below are the mobile app's primary write path —

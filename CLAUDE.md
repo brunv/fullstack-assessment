@@ -40,25 +40,29 @@ Docker or its own venv.
   paths. The `Project`/`Image` slice stays read-only as before. See
   `apps/api/CLAUDE.md`.
 - **Mobile**: full offline-first Jobs/Posts feature — WatermelonDB
-  schema/models/sync, navigation (Home + JobDetails), create/delete UI with
+  schema/models/sync, bottom-tab navigation (Home tab: Home → JobDetails →
+  PostDetails; Posts tab: AllPosts → PostDetails), create/delete UI with
   confirm dialogs, picture capture/pick with persistent local storage, sync
-  triggers (create/delete, app-foreground, connectivity-restored, manual
-  header button), sync status UI (synced/pending/syncing icon + per-row
-  cloud-slash indicators), and toasts for error states. Confirmed to build,
+  triggers (create/delete, app-foreground, connectivity-restored,
+  pull-to-refresh on every list screen — no header button), per-row
+  cloud-slash indicators, an all-posts cross-job search screen (client-side
+  filter, offline-capable), and toasts for error states. Confirmed to build,
   install, and boot cleanly on iOS Simulator with the correct local schema
   and API connectivity; full interactive tap-through wasn't driven by the
   agent (no touch-injection tooling in this session's sandbox — see
   `apps/mobile/CLAUDE.md`). See `apps/mobile/CLAUDE.md`.
-- **Web**: full Jobs/Posts feature — Home (list + create + delete Job) and
-  `/jobs/[id]` (list + create + delete Post) pages, the same
-  presigned-MinIO-upload flow as mobile (synchronous here, no offline
-  queueing needed), toasts (`sonner`) for every mutation/upload error path,
-  loading/empty/error states throughout. No offline requirement for this
-  layer per the README. `tsc --noEmit` passes clean and both routes compile
-  and serve real API-backed data (curl-verified); no browser automation tool
-  was available in this session to click through interactively — see
-  `apps/web/CLAUDE.md` for the one pre-existing, unrelated tooling gap found
-  (`yarn lint` broken by a Yarn 1 hoisting issue, not by this feature).
+- **Web**: full Jobs/Posts feature — a left sidebar (Home/Posts), Home (list
+  + create + delete Job), `/jobs/[id]` (list + create + delete Post), and
+  `/posts` (all posts across every job with a client-side description
+  search, mirrors mobile's AllPosts screen) — the same presigned-MinIO-upload
+  flow as mobile (synchronous here, no offline queueing needed), toasts
+  (`sonner`) for every mutation/upload error path, loading/empty/error
+  states throughout. No offline requirement for this layer per the README.
+  `tsc --noEmit` passes clean and all routes compile and serve real
+  API-backed data (curl-verified); no browser automation tool was available
+  in this session to click through interactively — see `apps/web/CLAUDE.md`
+  for the one pre-existing, unrelated tooling gap found (`yarn lint` broken
+  by a Yarn 1 hoisting issue, not by this feature).
 
 Two deliberate divergences from the literal README text, both documented
 inline in code (see `apps/api/CLAUDE.md` for detail): (1) Job/Post picture

@@ -57,9 +57,13 @@ a hard `DELETE`; see `soft_delete_job()`/`soft_delete_post()` in
 `PostAdmin` in `core/admin.py` block the admin's hard-delete action via
 `has_delete_permission`.
 
-`core/schema.py`: `JobType`/`PostType` (`Query.jobs`/`Query.job(id)` filter
-`is_deleted=False`; `JobType.resolve_posts` filters the reverse relation the
-same way). Mutations: `createJob(title)`, `createPost(jobId, description,
+`core/schema.py`: `JobType`/`PostType` (`Query.jobs`/`Query.job(id)`/`Query.posts`
+all filter `is_deleted=False`; `JobType.resolve_posts` filters the reverse
+relation the same way). `Query.posts` returns every post across every job
+(`select_related("job")`) — backs the web `/posts` page and is the query
+mobile's `AllPostsScreen` conceptually mirrors locally against WatermelonDB
+(mobile doesn't call this query directly; it reads its own already-synced
+`postsCollection` with no `job_id` filter). Mutations: `createJob(title)`, `createPost(jobId, description,
 pictureKey, pictureContentType)`, `createPresignedUpload(filename,
 contentType)` (generic — reused for any picture), `deleteJob(id)`,
 `deletePost(id)` (soft-delete, `deleteJob` cascades). **None of these are
