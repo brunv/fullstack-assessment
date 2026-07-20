@@ -13,6 +13,15 @@ def generate_client_id() -> str:
     return "".join(random.choices(alphabet, k=16))
 
 
+class Status(models.TextChoices):
+    """Shared by Job and Post. Every new Job/Post starts as NEW — status is
+    only ever changed explicitly by the user from a Job/Post detail view."""
+
+    NEW = "new", "New"
+    IN_PROGRESS = "in_progress", "In Progress"
+    COMPLETE = "complete", "Complete"
+
+
 class Project(models.Model):
     """A minimal domain entity for the interview scaffold."""
 
@@ -64,6 +73,9 @@ class Job(models.Model):
         primary_key=True, max_length=16, default=generate_client_id, editable=False
     )
     title = models.CharField(max_length=255)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.NEW
+    )
     is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -90,6 +102,9 @@ class Post(models.Model):
     description = models.TextField(blank=True, default="")
     picture_key = models.CharField(max_length=500, blank=True, default="")
     picture_content_type = models.CharField(max_length=120, blank=True, default="")
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.NEW
+    )
     is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

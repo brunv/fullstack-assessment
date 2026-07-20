@@ -4,6 +4,7 @@ import { synchronize } from "@nozbe/watermelondb/sync";
 import { apolloClient } from "../apollo";
 import { SYNC_URL } from "../config";
 import { CREATE_PRESIGNED_UPLOAD } from "../graphql/mutations";
+import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { database, postsCollection } from "./index";
 import { updatePostPictureKey } from "./mutations";
 
@@ -49,7 +50,7 @@ async function runSynchronize(): Promise<void> {
         last_pulled_at: String(lastPulledAt ?? 0),
         schema_version: String(schemaVersion),
       });
-      const response = await fetch(`${SYNC_URL}?${params.toString()}`);
+      const response = await fetchWithTimeout(`${SYNC_URL}?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`Pull failed with status ${response.status}`);
       }
@@ -57,7 +58,7 @@ async function runSynchronize(): Promise<void> {
       return { changes, timestamp };
     },
     pushChanges: async ({ changes, lastPulledAt }) => {
-      const response = await fetch(SYNC_URL, {
+      const response = await fetchWithTimeout(SYNC_URL, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ changes, lastPulledAt }),
@@ -90,10 +91,10 @@ async function uploadPendingPictures(): Promise<void> {
       const uploadUrl: string = data.createPresignedUpload.uploadUrl;
       const key: string = data.createPresignedUpload.key;
 
-      const fileResponse = await fetch(post.pictureLocalUri);
+      const fileResponse = await fetchWithTimeout(post.pictureLocalUri);
       const blob = await fileResponse.blob();
 
-      const putResponse = await fetch(uploadUrl, {
+      const putResponse = await fetchWithTimeout(uploadUrl, {
         method: "PUT",
         headers: { "content-type": contentType },
         body: blob,

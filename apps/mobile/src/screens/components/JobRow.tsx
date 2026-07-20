@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type Job from "../../db/models/Job";
 import { colors, radius, spacing } from "../../theme";
+import StatusBadge from "./StatusBadge";
 
 type Props = {
   job: Job;
@@ -40,6 +41,9 @@ export default function JobRow({ job, onPress, onDelete }: Props) {
         <Text style={styles.subtitle}>
           {postCount} post{postCount === 1 ? "" : "s"}
         </Text>
+        <View style={styles.badgeRow}>
+          <StatusBadge status={job.status} />
+        </View>
       </View>
       <Pressable
         hitSlop={8}
@@ -70,5 +74,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 16, fontWeight: "600", color: colors.text, flexShrink: 1 },
   pendingIcon: { marginLeft: spacing.xs },
   subtitle: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  badgeRow: { marginTop: spacing.xs },
   deleteButton: { padding: spacing.xs, marginRight: spacing.xs },
 });

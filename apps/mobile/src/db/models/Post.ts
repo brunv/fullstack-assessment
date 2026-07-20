@@ -2,6 +2,7 @@ import { Model, Relation } from "@nozbe/watermelondb";
 import { date, field, readonly, relation } from "@nozbe/watermelondb/decorators";
 import type { Associations } from "@nozbe/watermelondb/Model";
 
+import type { Status } from "../../status";
 import type Job from "./Job";
 
 export default class Post extends Model {
@@ -12,6 +13,7 @@ export default class Post extends Model {
 
   @field("job_id") jobId!: string;
   @field("description") description!: string;
+  @field("status") status!: Status;
 
   // Populated once the picture has been uploaded to MinIO (see the sync
   // pre-pass) and/or pulled down from the server.

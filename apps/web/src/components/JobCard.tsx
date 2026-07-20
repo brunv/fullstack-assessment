@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ChevronRight, Trash2 } from "lucide-react";
 
 import type { Job } from "@/graphql/operations";
+import { StatusBadge } from "./StatusBadge";
 
 type Props = {
   job: Job;
@@ -21,6 +22,9 @@ export function JobCard({ job, onDelete }: Props) {
           {postCount} post{postCount === 1 ? "" : "s"} ·{" "}
           {new Date(job.createdAt).toLocaleDateString()}
         </p>
+        <div className="mt-2">
+          <StatusBadge status={job.status} />
+        </div>
       </Link>
       <button
         type="button"

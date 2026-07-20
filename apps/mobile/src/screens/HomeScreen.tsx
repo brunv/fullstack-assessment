@@ -2,7 +2,7 @@ import { Q } from "@nozbe/watermelondb";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -22,7 +22,9 @@ import type Job from "../db/models/Job";
 import { createJob, deleteJob } from "../db/mutations";
 import type { HomeStackParamList } from "../navigation/types";
 import JobRow from "./components/JobRow";
+import StatusPicker from "./components/StatusPicker";
 import { useSync } from "../sync/SyncContext";
+import { STATUS_LABELS, type Status } from "../status";
 import { colors, radius, spacing } from "../theme";
 
 type Nav = NativeStackNavigationProp<HomeStackParamList, "Home">;
@@ -31,16 +33,26 @@ export default function HomeScreen() {
   const navigation = useNavigation<Nav>();
   const { status, triggerSync } = useSync();
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [selectedStatus, setSelectedStatus] = useState<Status>("new");
   const [modalVisible, setModalVisible] = useState(false);
   const [title, setTitle] = useState("");
 
   useEffect(() => {
+    // Single subscription covering every Job regardless of the selected tab
+    // — tabs are a client-side filter over this one list, not separate
+    // queries, so pull-to-refresh (below) always syncs everything rather
+    // than whatever happens to be showing in the current tab.
     const subscription = jobsCollection
       .query(Q.sortBy("created_at", Q.desc))
       .observe()
       .subscribe(setJobs);
     return () => subscription.unsubscribe();
   }, []);
+
+  const filteredJobs = useMemo(
+    () => jobs.filter((job) => job.status === selectedStatus),
+    [jobs, selectedStatus],
+  );
 
   const closeModal = () => {
     setModalVisible(false);
@@ -91,6 +103,8 @@ export default function HomeScreen() {
     );
   };
 
+  // One shared control for the whole screen — pulling always triggers a
+  // full sync (all Jobs, all Posts), never scoped to just the active tab.
   const refreshControl = (
     <RefreshControl
       refreshing={status === "syncing"}
@@ -102,7 +116,11 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      {jobs.length === 0 ? (
+      <View style={styles.tabsSection}>
+        <StatusPicker status={selectedStatus} onChange={setSelectedStatus} />
+      </View>
+
+      {filteredJobs.length === 0 ? (
         // A ScrollView reliably supports pull-to-refresh regardless of
         // content size; FlatList's ListEmptyComponent + refreshControl does
         // not consistently register the pull gesture when there's no data.
@@ -113,14 +131,20 @@ export default function HomeScreen() {
         >
           <View style={styles.empty}>
             <Ionicons name="briefcase-outline" size={48} color={colors.textMuted} />
-            <Text style={styles.emptyTitle}>No jobs yet</Text>
-            <Text style={styles.emptySubtitle}>Tap the + button to create your first job</Text>
+            <Text style={styles.emptyTitle}>
+              No {STATUS_LABELS[selectedStatus].toLowerCase()} jobs
+            </Text>
+            <Text style={styles.emptySubtitle}>
+              {jobs.length === 0
+                ? "Tap the + button to create your first job"
+                : "Jobs you move to this status will show up here"}
+            </Text>
           </View>
         </ScrollView>
       ) : (
         <FlatList
           style={styles.scrollFill}
-          data={jobs}
+          data={filteredJobs}
           keyExtractor={(job) => job.id}
           contentContainerStyle={styles.list}
           refreshControl={refreshControl}
@@ -179,6 +203,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  tabsSection: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm },
   // Applied as `style` (not contentContainerStyle) on the FlatList/ScrollView
   // themselves — without it they size to their content instead of filling
   // the screen, so pull-to-refresh only works when touching that small

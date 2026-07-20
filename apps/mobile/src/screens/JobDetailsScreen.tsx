@@ -20,15 +20,27 @@ import Toast from "react-native-toast-message";
 import { jobsCollection } from "../db";
 import type Job from "../db/models/Job";
 import type Post from "../db/models/Post";
-import { createPost, deletePost } from "../db/mutations";
+import { createPost, deletePost, updateJobStatus } from "../db/mutations";
 import type { HomeStackParamList } from "../navigation/types";
 import CreatePostModal from "./components/CreatePostModal";
 import PostRow from "./components/PostRow";
+import StatusPicker from "./components/StatusPicker";
 import { useSync } from "../sync/SyncContext";
+import { compareByStatus, type Status } from "../status";
 import { colors, radius, spacing } from "../theme";
 
 type Props = NativeStackScreenProps<HomeStackParamList, "JobDetails">;
 type Nav = NativeStackNavigationProp<HomeStackParamList, "JobDetails">;
+
+// Single combined list — no per-status tabs here (those are Home's Job
+// list only) — sorted new > in_progress > complete, newest first within
+// each status.
+function sortPosts(list: Post[]): Post[] {
+  return [...list].sort((a, b) => {
+    const statusDiff = compareByStatus(a, b);
+    return statusDiff !== 0 ? statusDiff : b.createdAt.getTime() - a.createdAt.getTime();
+  });
+}
 
 export default function JobDetailsScreen({ route }: Props) {
   const { jobId } = route.params;
@@ -39,18 +51,39 @@ export default function JobDetailsScreen({ route }: Props) {
   const [modalVisible, setModalVisible] = useState(false);
 
   useEffect(() => {
+    let jobSubscription: { unsubscribe: () => void } | null = null;
     let postsSubscription: { unsubscribe: () => void } | null = null;
     jobsCollection
       .find(jobId)
       .then((foundJob) => {
         setJob(foundJob);
-        postsSubscription = foundJob.posts.observe().subscribe(setPosts);
+        jobSubscription = foundJob.observe().subscribe(setJob);
+        postsSubscription = foundJob.posts
+          .observe()
+          .subscribe((list) => setPosts(sortPosts(list)));
       })
       .catch(() => {
         Toast.show({ type: "error", text1: "This job could not be found" });
       });
-    return () => postsSubscription?.unsubscribe();
+    return () => {
+      jobSubscription?.unsubscribe();
+      postsSubscription?.unsubscribe();
+    };
   }, [jobId]);
+
+  const handleStatusChange = async (nextStatus: Status) => {
+    if (!job) return;
+    try {
+      await updateJobStatus(job, nextStatus);
+      triggerSync({ silent: true });
+    } catch (err) {
+      Toast.show({
+        type: "error",
+        text1: "Couldn't update status",
+        text2: err instanceof Error ? err.message : "Please try again.",
+      });
+    }
+  };
 
   const handleAddPost = async (values: { description: string; pictureLocalUri: string | null }) => {
     if (!job) return;
@@ -100,6 +133,12 @@ export default function JobDetailsScreen({ route }: Props) {
 
   return (
     <View style={styles.container}>
+      {job && (
+        <View style={styles.statusSection}>
+          <Text style={styles.statusLabel}>Status</Text>
+          <StatusPicker status={job.status} onChange={handleStatusChange} />
+        </View>
+      )}
       {posts.length === 0 ? (
         // A ScrollView reliably supports pull-to-refresh regardless of
         // content size; FlatList's ListEmptyComponent + refreshControl does
@@ -158,6 +197,17 @@ const styles = StyleSheet.create({
   // the screen, so pull-to-refresh only works when touching that small
   // content area rather than anywhere on screen.
   scrollFill: { flex: 1 },
+  statusSection: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  statusLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.textMuted,
+    marginBottom: spacing.xs,
+  },
   list: { padding: spacing.lg, paddingBottom: 96 },
   emptyList: { flexGrow: 1 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl },

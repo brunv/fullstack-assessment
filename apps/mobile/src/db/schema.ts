@@ -4,12 +4,16 @@ import { appSchema, tableSchema } from "@nozbe/watermelondb";
 // exactly (see apps/api/core/sync.py) — the sync payload is passed through
 // close to verbatim, so keeping names aligned avoids a mapping layer.
 export const schema = appSchema({
-  version: 1,
+  version: 2,
   tables: [
     tableSchema({
       name: "jobs",
       columns: [
         { name: "title", type: "string" },
+        // "new" | "in_progress" | "complete" — see src/status.ts. Every new
+        // Job starts "new"; only changed explicitly from the Job detail
+        // screen.
+        { name: "status", type: "string" },
         { name: "created_at", type: "number" },
         { name: "updated_at", type: "number" },
       ],
@@ -29,6 +33,8 @@ export const schema = appSchema({
         // (see apps/api/core/sync.py's _POST_FIELDS) — it has no meaning
         // outside this device.
         { name: "picture_local_uri", type: "string" },
+        // Same status enum as jobs.status.
+        { name: "status", type: "string" },
         { name: "created_at", type: "number" },
         { name: "updated_at", type: "number" },
       ],

@@ -21,25 +21,28 @@ apps/mobile/
     apollo.ts               Apollo Client, wired into App.tsx
     config.ts                GRAPHQL_URL / SYNC_URL (EXPO_PUBLIC_GRAPHQL_URL / EXPO_PUBLIC_API_URL)
     theme.ts                 colors/spacing/radius constants shared by all screens
+    status.ts                 Status type ("new"|"in_progress"|"complete") + STATUS_VALUES/STATUS_LABELS
     db/
-      schema.ts               WatermelonDB appSchema: jobs, posts tables (snake_case, mirrors API fields)
+      schema.ts               WatermelonDB appSchema (version 2): jobs, posts tables (snake_case, mirrors API fields)
+      migrations.ts             schemaMigrations: v1→v2 adds `status` column to both tables + SQL backfill to "new"
       models/Job.ts, Post.ts   Model classes (@field/@date/@children/@relation decorators)
       index.ts                 SQLiteAdapter + Database singleton, jobsCollection/postsCollection
-      mutations.ts             createJob/createPost/deleteJob(cascade)/deletePost/updatePostPictureKey
+      mutations.ts             createJob/createPost/deleteJob(cascade)/deletePost/updatePostPictureKey/updateJobStatus/updatePostStatus
       sync.ts                  syncDatabase(): picture pre-pass → synchronize() with retry-once, in-flight guard
     sync/
       SyncContext.tsx          useSync() hook: status (synced/pending/syncing), triggerSync(), AppState + NetInfo triggers
     navigation/
-      types.ts                  HomeStackParamList, PostsStackParamList, RootTabParamList, shared PostDetailsParams
-      RootNavigator.tsx          bottom-tab root (Home, Posts), headerShown: false — each tab owns its own stack header
-      HomeStackNavigator.tsx     native-stack: Home, JobDetails, PostDetails
-      PostsStackNavigator.tsx    native-stack: AllPosts, PostDetails
+      types.ts                  HomeStackParamList, PostsStackParamList (both share PostDetailsParams), RootTabParamList
+      RootNavigator.tsx          bottom-tab root (HomeTab, PostsTab) — see "Navigation" below
+      HomeStackNavigator.tsx      native-stack: Home → JobDetails → PostDetails
+      PostsStackNavigator.tsx     native-stack: AllPosts → PostDetails
     screens/
-      HomeScreen.tsx            Job list (observed), FAB → create modal, delete w/ confirm
-      JobDetailsScreen.tsx      Post list for a job (rows tappable → PostDetails), add-post button, delete w/ confirm
-      AllPostsScreen.tsx        All posts across every job (observed, no job_id filter), search bar, pull-to-refresh
-      PostDetailsScreen.tsx     Full-size image + job title + description for one post, observed by id
-      components/JobRow.tsx, PostRow.tsx, PostSearchRow.tsx, CreatePostModal.tsx
+      HomeScreen.tsx            Job list filtered by New/In Progress/Complete tabs, FAB → create modal, delete w/ confirm
+      JobDetailsScreen.tsx      One combined Post list for a job (sorted by status, not tabbed), add-post button, delete w/ confirm
+      PostDetailsScreen.tsx     Full-size image + job title + description for one post, observed by id (shared by both stacks)
+      AllPostsScreen.tsx        Cross-job Post search (PostsTab) — text search over description, one flat list
+      components/JobRow.tsx, PostRow.tsx, PostSearchRow.tsx, CreatePostModal.tsx,
+                 StatusBadge.tsx (read-only tag), StatusPicker.tsx (dual-purpose 3-way control — edit or filter, see "Status" below)
     utils/
       pickImage.ts              camera/library pick → resize/compress → persist to FileSystem.documentDirectory
       formatRelativeTime.ts
@@ -84,6 +87,21 @@ record created-then-pushed-then-repulled-from-a-stale-checkpoint would
 otherwise be misclassified as a fresh `created` row and rejected by
 WatermelonDB as already existing locally.
 
+**Every network call in the sync path goes through `utils/fetchWithTimeout.ts`**
+(pull, push, the picture PUT, and — via `apollo.ts`'s `HttpLink({ fetch:
+fetchWithTimeout })` — the `createPresignedUpload` mutation too). React
+Native's `fetch` has no built-in timeout: a stalled request (flaky network,
+server accepts the connection but never responds) leaves that promise
+pending forever, which means `performSync()` never resolves *or* rejects,
+`syncDatabase()`'s promise never settles, and `SyncContext`'s `isSyncing`
+never gets reset by `triggerSync`'s `.finally()` — every list screen's
+pull-to-refresh spinner (bound to `status === "syncing"`) is stuck
+indefinitely, on every screen, until app restart. Bug, not theoretical — hit
+this exact symptom ("spinner freezes, nothing else shown" on Home) and this
+was the fix. Default timeout is 20s; a timeout surfaces as a normal rejected
+promise (caught by the retry-once wrapper / per-item try/catch same as any
+other sync failure), not a special case.
+
 ## Sync status UI & triggers (`src/sync/SyncContext.tsx`)
 
 `useSync()` exposes `status: 'synced' | 'pending' | 'syncing'` (derived by
@@ -92,7 +110,7 @@ collections) and `triggerSync({ silent? })`. Background triggers (create,
 delete, `AppState` → `active`, `NetInfo` offline→online transition) pass
 `silent: true` and skip quietly when offline (expected state, not an error —
 already visible via the pending/cloud-slash icons). Manual trigger is
-**pull-to-refresh** on `HomeScreen`/`JobDetailsScreen`/`AllPostsScreen` — no
+**pull-to-refresh** on `HomeScreen`/`JobDetailsScreen` — no
 `silent`, so it shows an info toast if offline — via a shared `refreshControl` element
 (`refreshing={status === "syncing"}`, `onRefresh={() => triggerSync()}`)
 passed to whichever container is currently rendered. Both screens branch on
@@ -114,34 +132,86 @@ just that small strip at the top and the rest of the screen is bare
 directly — re-renders naturally since the parent `.observe()` re-emits on
 any status change.
 
-## Navigation: bottom tabs + per-tab stack
+## Navigation: bottom tabs + two stacks
 
-`RootNavigator.tsx` is a `@react-navigation/bottom-tabs` navigator (pure JS,
-no native module — installing it didn't require a native rebuild, unlike
-`react-native-screens`/`netinfo`/etc. earlier), not a single stack. Two tabs,
-each wrapping its own `native-stack`: **Home** (`HomeStackNavigator`: Home →
-JobDetails → PostDetails) and **Posts** (`PostsStackNavigator`: AllPosts →
-PostDetails). `headerShown: false` at the tab level — headers are owned by
-each stack so switching tabs doesn't show a double header.
+`RootNavigator.tsx` is a `@react-navigation/bottom-tabs` root with two tabs:
+**HomeTab** (`HomeStackNavigator`: Home → JobDetails → PostDetails) and
+**PostsTab** (`PostsStackNavigator`: AllPosts → PostDetails). `PostDetails`
+is registered in *both* stacks (reachable from a Job's post list or from the
+global search), so `PostDetailsScreen` is typed against the shared
+`PostDetailsParams` param shape (`navigation/types.ts`) rather than either
+stack's full param list — it only reads `route.params`, never navigates
+itself, so it doesn't need to know which stack it's mounted in.
 
-`PostDetailsScreen` is registered in **both** stacks (reachable from a Job's
-post list or from the global search) — since it only reads `route.params`
-and never calls `navigation.navigate` itself, it's typed against the shared
-`PostDetailsParams` shape (`{ route: { params: PostDetailsParams } }`) rather
-than either stack's full `NativeStackScreenProps`, avoiding a union type for
-two navigators that both satisfy it identically.
+**Do not confuse this with status filtering** — a past miscommunication led
+to this nav bar being removed by mistake while chasing an unrelated request
+to drop a status *tab view*. The two are unrelated: this bottom-tab bar is
+top-level app navigation (Home vs. Posts destinations); the status tabs
+described below are a client-side filter *within* the Home screen's Job
+list. Don't remove this navigator without an explicit, unambiguous request
+to do so.
 
-`AllPostsScreen.tsx`: observes `postsCollection` with **no `job_id` filter**
-(all posts across every job, unlike `JobDetailsScreen` which scopes to one
-job via the `@children` relation), sorted `created_at` desc. Search is
-client-side only — `useMemo` filtering the already-observed array by
-`description.toLowerCase().includes(query)` — no server round-trip, matching
-the offline-first pattern (searching should work with zero connectivity).
-`PostSearchRow.tsx` (vs. plain `PostRow.tsx`) additionally resolves and
-shows the parent job's title per row (`post.job.fetch()` in a `useEffect`,
-since `Relation.fetch()` is async and the job isn't otherwise in scope when
-listing posts globally) — needed for context you'd otherwise get for free
-from being inside a `JobDetails` screen.
+## Status (Job + Post)
+
+`src/status.ts` is the single source of truth for the 3 values
+(`"new" | "in_progress" | "complete"`) — mirrors `apps/api/core/models.py`'s
+`Status` TextChoices and `apps/web/src/lib/status.ts` (three separate files
+by necessity, no shared package between the apps in this monorepo, but keep
+them in sync if the value set ever changes). Every `createJob`/`createPost`
+sets `status = "new"` explicitly in `db/mutations.ts` — WatermelonDB column
+definitions have no per-column default (unlike Django), so this has to be
+set at create time, not declared in `schema.ts`. `STATUS_PRIORITY`/
+`compareByStatus` (also in `status.ts`) rank `new` < `in_progress` <
+`complete`, for sorting — not filtering.
+
+Status shows up in the UI two different ways, deliberately not the same
+pattern in both places:
+- **`HomeScreen`**: the Job list is split into three tabs (New / In
+  Progress / Complete, `StatusPicker` reused as a filter control — see
+  below), default tab `"new"`. There's exactly **one** WatermelonDB
+  subscription behind all three tabs (`jobsCollection.query(...).observe()`
+  in a single `useEffect`); switching tabs only changes a local
+  `useMemo`-filtered view over that same array. This matters for
+  pull-to-refresh: the single `refreshControl` on the screen always triggers
+  one full `triggerSync()` regardless of which tab is active — there's
+  nothing to accidentally scope "per tab" because the tabs were never
+  separate data sources or separate screens to begin with.
+- **`JobDetailsScreen`**: a Job's posts are **not** tabbed — one combined
+  list, sorted `new > in_progress > complete` (`compareByStatus`, secondary
+  sort newest-first within a status) via a small `sortPosts()` helper
+  wrapping the `foundJob.posts.observe()` subscription.
+
+`StatusBadge.tsx` (read-only tag, used in `JobRow`/`PostRow`/`PostSearchRow`)
+is purely presentational. `StatusPicker.tsx` (3-segment control) is used for **two
+different purposes** depending on where it's mounted — editing a single
+record's status (`JobDetailsScreen` for the Job, `PostDetailsScreen` for the
+Post — status is only ever *edited* from a detail screen, never from a list
+row) vs. filtering Home's Job list (a plain local `useState<Status>`, no
+persistence, no WatermelonDB write). Same component either way — its props
+(`status`, `onChange`, `disabled?`) don't encode which mode it's in, that's
+purely up to what the caller does in `onChange`. Both detail screens
+re-observe their subject (`foundJob.observe().subscribe(setJob)` / existing
+`post.observe()`) specifically so an edit re-renders — `.update()` mutates
+the WatermelonDB model in place, which doesn't itself trigger a React
+re-render without a subscription. `updateJobStatus`/`updatePostStatus`
+(`db/mutations.ts`) are plain local writes like any other mutation here, then
+`triggerSync({ silent: true })` — no direct GraphQL call, consistent with
+mobile's local-first-then-sync write path for everything else.
+
+**Schema migration**: bumping `schema.ts` to `version: 2` without a
+migration would make WatermelonDB refuse to open any existing local
+database (schema-version mismatch). `db/migrations.ts` uses
+`schemaMigrations` (`addColumns` on both tables + `unsafeExecuteSql` to
+backfill any pre-existing NULL `status` to `"new"`, since SQLite
+`ALTER TABLE ADD COLUMN` has no per-row default), wired into the
+`SQLiteAdapter` via its `migrations` option in `db/index.ts`. Confirmed via
+`sqlite3` on the simulator's `watermelon.db` that the resulting schema is
+correct post-migration; the specific migrate-from-existing-v1-data code path
+wasn't deterministically re-exercised in this session (the simulator's app
+container had already been reset between checks, for reasons outside this
+session's control) — the migration steps themselves are written directly
+against WatermelonDB's documented/typed `schemaMigrations` API, not
+guessed.
 
 ## Image capture/picker
 

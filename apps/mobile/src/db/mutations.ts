@@ -1,3 +1,4 @@
+import type { Status } from "../status";
 import { database, jobsCollection, postsCollection } from "./index";
 import type Job from "./models/Job";
 import type Post from "./models/Post";
@@ -6,6 +7,7 @@ export async function createJob(title: string): Promise<Job> {
   return database.write(async () => {
     return jobsCollection.create((job) => {
       job.title = title;
+      job.status = "new";
     });
   });
 }
@@ -18,10 +20,27 @@ export async function createPost(
     return postsCollection.create((post) => {
       post.jobId = job.id;
       post.description = options.description;
+      post.status = "new";
       post.pictureLocalUri = options.pictureLocalUri ?? "";
       post.pictureKey = "";
       post.pictureContentType = "";
       post.pictureUrl = "";
+    });
+  });
+}
+
+export async function updateJobStatus(job: Job, status: Status): Promise<void> {
+  await database.write(async () => {
+    await job.update((j) => {
+      j.status = status;
+    });
+  });
+}
+
+export async function updatePostStatus(post: Post, status: Status): Promise<void> {
+  await database.write(async () => {
+    await post.update((p) => {
+      p.status = status;
     });
   });
 }

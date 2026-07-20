@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type Post from "../../db/models/Post";
 import { colors, radius, spacing } from "../../theme";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
+import StatusBadge from "./StatusBadge";
 
 type Props = {
   post: Post;
@@ -57,7 +58,10 @@ export default function PostSearchRow({ post, onPress }: Props) {
             />
           )}
         </View>
-        <Text style={styles.date}>{formatRelativeTime(post.createdAt)}</Text>
+        <View style={styles.badgeRow}>
+          <StatusBadge status={post.status} />
+          <Text style={styles.date}>{formatRelativeTime(post.createdAt)}</Text>
+        </View>
       </View>
     </Pressable>
   );
@@ -86,5 +90,6 @@ const styles = StyleSheet.create({
   descriptionRow: { flexDirection: "row", alignItems: "flex-start", marginTop: 2 },
   description: { fontSize: 14, color: colors.text, flexShrink: 1 },
   pendingIcon: { marginLeft: spacing.xs, marginTop: 2 },
-  date: { fontSize: 12, color: colors.textMuted, marginTop: 4 },
+  badgeRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 4 },
+  date: { fontSize: 12, color: colors.textMuted },
 });

@@ -33,36 +33,55 @@ Docker or its own venv.
 ## Current status: Job/Post feature built across all three layers
 
 - **API**: `Job`/`Post` models, GraphQL types/queries/mutations
-  (`createJob`/`createPost`/`createPresignedUpload`/`deleteJob`/`deletePost`,
-  soft-delete with server-side cascade), and the WatermelonDB sync endpoint
-  (`/sync/`, pull+push, conflict-abort+retry, tombstone deletes) are all
-  built and curl-verified, including the conflict-abort and cascade-delete
-  paths. The `Project`/`Image` slice stays read-only as before. See
+  (`createJob`/`createPost`/`createPresignedUpload`/`updateJobStatus`/
+  `updatePostStatus`/`deleteJob`/`deletePost`, soft-delete with server-side
+  cascade), and the WatermelonDB sync endpoint (`/sync/`, pull+push,
+  conflict-abort+retry, tombstone deletes) are all built and curl-verified,
+  including the conflict-abort and cascade-delete paths. Both models have a
+  shared 3-value `status` (`new`/`in_progress`/`complete`, default `new`).
+  The `Project`/`Image` slice stays read-only as before. See
   `apps/api/CLAUDE.md`.
 - **Mobile**: full offline-first Jobs/Posts feature — WatermelonDB
-  schema/models/sync, bottom-tab navigation (Home tab: Home → JobDetails →
-  PostDetails; Posts tab: AllPosts → PostDetails), create/delete UI with
-  confirm dialogs, picture capture/pick with persistent local storage, sync
-  triggers (create/delete, app-foreground, connectivity-restored,
-  pull-to-refresh on every list screen — no header button), per-row
-  cloud-slash indicators, an all-posts cross-job search screen (client-side
-  filter, offline-capable), and toasts for error states. Confirmed to build,
-  install, and boot cleanly on iOS Simulator with the correct local schema
-  and API connectivity; full interactive tap-through wasn't driven by the
-  agent (no touch-injection tooling in this session's sandbox — see
-  `apps/mobile/CLAUDE.md`). See `apps/mobile/CLAUDE.md`.
-- **Web**: full Jobs/Posts feature — a left sidebar (Home/Posts), Home (list
-  + create + delete Job), `/jobs/[id]` (list + create + delete Post), and
-  `/posts` (all posts across every job with a client-side description
-  search, mirrors mobile's AllPosts screen) — the same presigned-MinIO-upload
-  flow as mobile (synchronous here, no offline queueing needed), toasts
-  (`sonner`) for every mutation/upload error path, loading/empty/error
-  states throughout. No offline requirement for this layer per the README.
+  schema/models/sync (schema migrated to v2 for `status`, no data reset
+  needed), bottom-tab navigation (HomeTab: Home → JobDetails → PostDetails;
+  PostsTab: AllPosts → PostDetails — `PostDetails` shared by both stacks),
+  create/delete UI with confirm dialogs, picture capture/pick with
+  persistent local storage, sync triggers (create/delete, app-foreground,
+  connectivity-restored, pull-to-refresh on every list screen — no header
+  button). Home's Job list is split into New/In Progress/Complete filter
+  tabs (client-side, one shared data subscription and one shared
+  pull-to-refresh behind all three — not per-tab); a Job's Post list is a
+  single combined list sorted by status instead; the separate PostsTab still
+  hosts the global cross-job Post search. Toasts for every error state, incl.
+  a network-timeout fix (`fetchWithTimeout`) for a real bug where a stalled
+  sync request could leave the pull-to-refresh spinner stuck forever.
+  Confirmed to build, install, and boot cleanly on iOS Simulator with the
+  correct local schema and API connectivity; full interactive tap-through
+  wasn't driven by the agent (no touch-injection tooling in this session's
+  sandbox — see `apps/mobile/CLAUDE.md`). See `apps/mobile/CLAUDE.md`.
+- **Web**: full Jobs/Posts feature — a left `Sidebar` (Home / Posts), Home
+  (list filtered by New/In Progress/Complete tabs, create/delete Job),
+  `/jobs/[id]` (single combined Posts list sorted by status, add/delete
+  Post, editable Job status), `/posts` (global cross-job Post search,
+  Sidebar's second destination) — the same presigned-MinIO-upload flow as
+  mobile (synchronous here, no offline queueing needed), toasts (`sonner`)
+  for every mutation/upload error path, loading/empty/error states
+  throughout. No offline requirement for this layer per the README.
   `tsc --noEmit` passes clean and all routes compile and serve real
   API-backed data (curl-verified); no browser automation tool was available
   in this session to click through interactively — see `apps/web/CLAUDE.md`
   for the one pre-existing, unrelated tooling gap found (`yarn lint` broken
   by a Yarn 1 hoisting issue, not by this feature).
+
+**Note**: the global "Posts" nav destination (bottom tabs on mobile, left
+sidebar on web) backing cross-job post search coexists with status
+filtering — they aren't the same feature. Status filtering (New/In
+Progress/Complete tabs) lives *inside* Home's Job list and is a separate,
+later addition; a Job's own Post list is a single sorted list, not tabbed.
+A past session mistakenly removed the Home/Posts nav itself while chasing
+an unrelated instruction to drop a status tab *view* — it was restored.
+Don't remove top-level Home/Posts navigation without an explicit,
+unambiguous request to do so.
 
 Two deliberate divergences from the literal README text, both documented
 inline in code (see `apps/api/CLAUDE.md` for detail): (1) Job/Post picture

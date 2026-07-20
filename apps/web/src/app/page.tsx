@@ -2,20 +2,23 @@
 
 import { useMutation, useQuery } from "@apollo/client";
 import { Briefcase, Plus } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { CreateJobDialog } from "@/components/CreateJobDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { JobCard } from "@/components/JobCard";
 import { Skeleton } from "@/components/Skeleton";
+import { StatusSelect } from "@/components/StatusSelect";
 import {
   DELETE_JOB,
   JOBS_QUERY,
   type DeleteJobVars,
   type Job,
   type JobsQueryResult,
+  type Status,
 } from "@/graphql/operations";
+import { STATUS_LABELS } from "@/lib/status";
 
 export default function Home() {
   const { data, loading, error } = useQuery<JobsQueryResult>(JOBS_QUERY, {
@@ -25,6 +28,15 @@ export default function Home() {
     refetchQueries: [{ query: JOBS_QUERY }],
   });
   const [createOpen, setCreateOpen] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState<Status>("new");
+
+  // Tabs filter a single already-fetched list client-side — there's only
+  // ever one query (JOBS_QUERY) behind them, so there's nothing to
+  // separately "refresh per tab."
+  const filteredJobs = useMemo(
+    () => (data?.jobs ?? []).filter((job) => job.status === selectedStatus),
+    [data, selectedStatus],
+  );
 
   const handleDelete = async (job: Job) => {
     const postCount = job.posts.length;
@@ -57,6 +69,10 @@ export default function Home() {
         </button>
       </div>
 
+      <div className="mb-6">
+        <StatusSelect status={selectedStatus} onChange={setSelectedStatus} />
+      </div>
+
       {loading && !data ? (
         <div className="space-y-3">
           <Skeleton className="h-20 w-full" />
@@ -84,9 +100,15 @@ export default function Home() {
             </button>
           }
         />
+      ) : filteredJobs.length === 0 ? (
+        <EmptyState
+          icon={Briefcase}
+          title={`No ${STATUS_LABELS[selectedStatus].toLowerCase()} jobs`}
+          subtitle="Jobs you move to this status will show up here."
+        />
       ) : (
         <div className="space-y-3">
-          {data.jobs.map((job) => (
+          {filteredJobs.map((job) => (
             <JobCard key={job.id} job={job} onDelete={handleDelete} />
           ))}
         </div>

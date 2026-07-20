@@ -1,5 +1,7 @@
 import { gql } from "@apollo/client";
 
+export type Status = "new" | "in_progress" | "complete";
+
 export type PostJob = { id: string; title: string };
 
 export type Post = {
@@ -7,6 +9,7 @@ export type Post = {
   description: string;
   pictureUrl: string | null;
   pictureContentType: string;
+  status: Status;
   createdAt: string;
   job?: PostJob;
 };
@@ -14,6 +17,7 @@ export type Post = {
 export type Job = {
   id: string;
   title: string;
+  status: Status;
   createdAt: string;
   posts: Post[];
 };
@@ -23,6 +27,7 @@ export const JOBS_QUERY = gql`
     jobs {
       id
       title
+      status
       createdAt
       posts {
         id
@@ -37,12 +42,14 @@ export const JOB_QUERY = gql`
     job(id: $id) {
       id
       title
+      status
       createdAt
       posts {
         id
         description
         pictureUrl
         pictureContentType
+        status
         createdAt
       }
     }
@@ -58,6 +65,7 @@ export const ALL_POSTS_QUERY = gql`
       description
       pictureUrl
       pictureContentType
+      status
       createdAt
       job {
         id
@@ -74,6 +82,7 @@ export const CREATE_JOB = gql`
       job {
         id
         title
+        status
         createdAt
         posts {
           id
@@ -84,6 +93,30 @@ export const CREATE_JOB = gql`
 `;
 export type CreateJobResult = { createJob: { job: Job } };
 export type CreateJobVars = { title: string };
+
+export const UPDATE_JOB_STATUS = gql`
+  mutation UpdateJobStatus($id: ID!, $status: String!) {
+    updateJobStatus(id: $id, status: $status) {
+      job {
+        id
+        status
+      }
+    }
+  }
+`;
+export type UpdateJobStatusVars = { id: string; status: Status };
+
+export const UPDATE_POST_STATUS = gql`
+  mutation UpdatePostStatus($id: ID!, $status: String!) {
+    updatePostStatus(id: $id, status: $status) {
+      post {
+        id
+        status
+      }
+    }
+  }
+`;
+export type UpdatePostStatusVars = { id: string; status: Status };
 
 export const DELETE_JOB = gql`
   mutation DeleteJob($id: ID!) {
@@ -112,6 +145,7 @@ export const CREATE_POST = gql`
         description
         pictureUrl
         pictureContentType
+        status
         createdAt
       }
     }

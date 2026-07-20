@@ -2,6 +2,7 @@ import { Model, Query } from "@nozbe/watermelondb";
 import { children, date, field, readonly } from "@nozbe/watermelondb/decorators";
 import type { Associations } from "@nozbe/watermelondb/Model";
 
+import type { Status } from "../../status";
 import type Post from "./Post";
 
 export default class Job extends Model {
@@ -11,6 +12,7 @@ export default class Job extends Model {
   };
 
   @field("title") title!: string;
+  @field("status") status!: Status;
 
   // WatermelonDB auto-manages these because the model exposes `createdAt`/
   // `updatedAt` properties: created_at is set once on record creation,

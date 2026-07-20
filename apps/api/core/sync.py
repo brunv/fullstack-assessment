@@ -22,11 +22,11 @@ from django.db import transaction
 from django.http import HttpResponseBadRequest, HttpResponseNotAllowed, JsonResponse
 from django.utils import timezone
 
-from .models import Job, Post, soft_delete_job, soft_delete_post
+from .models import Job, Post, Status, soft_delete_job, soft_delete_post
 from .storage import public_url
 
-_JOB_FIELDS = {"title"}
-_POST_FIELDS = {"job_id", "description", "picture_key", "picture_content_type"}
+_JOB_FIELDS = {"title", "status"}
+_POST_FIELDS = {"job_id", "description", "picture_key", "picture_content_type", "status"}
 
 
 class SyncConflict(Exception):
@@ -45,6 +45,7 @@ def _serialize_job(job: Job) -> dict:
     return {
         "id": job.id,
         "title": job.title,
+        "status": job.status,
         "created_at": _to_ms(job.created_at),
         "updated_at": _to_ms(job.updated_at),
     }
@@ -57,6 +58,7 @@ def _serialize_post(post: Post) -> dict:
         "description": post.description,
         "picture_key": post.picture_key,
         "picture_content_type": post.picture_content_type,
+        "status": post.status,
         # Read-only on the client (not in _POST_FIELDS below, so a client
         # can't push a fake one back) — resolved here so posts synced from
         # another client (e.g. web) have something to display. Without this,
@@ -135,6 +137,11 @@ def _apply_creates_updates(model, table_changes: dict, allowed_fields: set) -> N
         # picture_local_uri, which never has meaning server-side) are
         # silently dropped rather than needing client-side exclusion logic.
         fields = {k: v for k, v in record.items() if k in allowed_fields}
+        # Sanitize rather than reject an invalid status (matches the sync
+        # protocol's "should not fail other than transiently" guidance) —
+        # drop the field instead of writing garbage or 500ing the push.
+        if "status" in fields and fields["status"] not in Status.values:
+            del fields["status"]
         model.objects.update_or_create(id=record["id"], defaults=fields)
 
 

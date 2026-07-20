@@ -12,7 +12,7 @@ import graphene
 from graphene_django import DjangoObjectType
 from graphql import GraphQLError
 
-from .models import Image, Job, Post, Project, soft_delete_job, soft_delete_post
+from .models import Image, Job, Post, Project, Status, soft_delete_job, soft_delete_post
 from .storage import presign_get, presign_put, public_url
 
 
@@ -40,16 +40,26 @@ class ImageType(DjangoObjectType):
 
 
 class JobType(DjangoObjectType):
+    # Overrides graphene_django's auto-generated enum for the `choices`
+    # CharField — it can't serialize a Django TextChoices member directly
+    # ("cannot represent value: Status.NEW"). A plain string, resolved
+    # explicitly, sidesteps that entirely and matches picture_url below.
+    status = graphene.String()
+
     class Meta:
         model = Job
-        fields = ("id", "title", "created_at", "updated_at", "posts")
+        fields = ("id", "title", "status", "created_at", "updated_at", "posts")
 
     def resolve_posts(self, info):
         return self.posts.filter(is_deleted=False)
 
+    def resolve_status(self, info):
+        return str(self.status)
+
 
 class PostType(DjangoObjectType):
     picture_url = graphene.String()
+    status = graphene.String()
 
     class Meta:
         model = Post
@@ -58,12 +68,16 @@ class PostType(DjangoObjectType):
             "job",
             "description",
             "picture_content_type",
+            "status",
             "created_at",
             "updated_at",
         )
 
     def resolve_picture_url(self, info):
         return public_url(self.picture_key) if self.picture_key else None
+
+    def resolve_status(self, info):
+        return str(self.status)
 
 
 class Query(graphene.ObjectType):
@@ -160,6 +174,44 @@ class CreatePresignedUpload(graphene.Mutation):
         return CreatePresignedUpload(upload_url=upload_url, key=key)
 
 
+def _validate_status(status: str) -> str:
+    if status not in Status.values:
+        raise GraphQLError(f"Invalid status: {status!r}. Must be one of {list(Status.values)}.")
+    return status
+
+
+class UpdateJobStatus(graphene.Mutation):
+    class Arguments:
+        id = graphene.ID(required=True)
+        status = graphene.String(required=True)
+
+    job = graphene.Field(JobType)
+
+    def mutate(self, info, id, status):
+        job = Job.objects.filter(pk=id, is_deleted=False).first()
+        if job is None:
+            raise GraphQLError("Job not found")
+        job.status = _validate_status(status)
+        job.save(update_fields=["status", "updated_at"])
+        return UpdateJobStatus(job=job)
+
+
+class UpdatePostStatus(graphene.Mutation):
+    class Arguments:
+        id = graphene.ID(required=True)
+        status = graphene.String(required=True)
+
+    post = graphene.Field(PostType)
+
+    def mutate(self, info, id, status):
+        post = Post.objects.filter(pk=id, is_deleted=False).first()
+        if post is None:
+            raise GraphQLError("Post not found")
+        post.status = _validate_status(status)
+        post.save(update_fields=["status", "updated_at"])
+        return UpdatePostStatus(post=post)
+
+
 class DeleteJob(graphene.Mutation):
     class Arguments:
         id = graphene.ID(required=True)
@@ -192,5 +244,7 @@ class Mutation(graphene.ObjectType):
     create_job = CreateJob.Field()
     create_post = CreatePost.Field()
     create_presigned_upload = CreatePresignedUpload.Field()
+    update_job_status = UpdateJobStatus.Field()
+    update_post_status = UpdatePostStatus.Field()
     delete_job = DeleteJob.Field()
     delete_post = DeletePost.Field()

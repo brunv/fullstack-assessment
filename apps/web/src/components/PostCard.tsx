@@ -3,6 +3,7 @@
 import { ImageOff, Trash2 } from "lucide-react";
 
 import type { Post } from "@/graphql/operations";
+import { StatusBadge } from "./StatusBadge";
 
 type Props = {
   post: Post;
@@ -40,9 +41,12 @@ export function PostCard({ post, onPress, onDelete }: Props) {
         <p className="whitespace-pre-wrap text-sm text-[var(--color-ink)]">
           {post.description || "No description"}
         </p>
-        <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-          {new Date(post.createdAt).toLocaleString()}
-        </p>
+        <div className="mt-1.5 flex items-center gap-2">
+          <StatusBadge status={post.status} />
+          <p className="text-xs text-[var(--color-ink-muted)]">
+            {new Date(post.createdAt).toLocaleString()}
+          </p>
+        </div>
       </div>
       <button
         type="button"

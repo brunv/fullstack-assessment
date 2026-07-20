@@ -1,9 +1,17 @@
 "use client";
 
+import { useMutation } from "@apollo/client";
 import { ImageOff } from "lucide-react";
+import { toast } from "sonner";
 
-import type { Post } from "@/graphql/operations";
+import {
+  UPDATE_POST_STATUS,
+  type Post,
+  type Status,
+  type UpdatePostStatusVars,
+} from "@/graphql/operations";
 import { Modal } from "./Modal";
+import { StatusSelect } from "./StatusSelect";
 
 type Props = {
   post: Post | null;
@@ -11,6 +19,22 @@ type Props = {
 };
 
 export function PostDetailModal({ post, onClose }: Props) {
+  // No refetchQueries needed: the mutation response includes id + status, so
+  // Apollo's normalized cache updates this Post everywhere it's rendered
+  // from (the job details list) automatically.
+  const [updatePostStatus] = useMutation<unknown, UpdatePostStatusVars>(UPDATE_POST_STATUS);
+
+  const handleStatusChange = async (status: Status) => {
+    if (!post) return;
+    try {
+      await updatePostStatus({ variables: { id: post.id, status } });
+    } catch (err) {
+      toast.error("Couldn't update status", {
+        description: err instanceof Error ? err.message : "Please try again.",
+      });
+    }
+  };
+
   return (
     <Modal open={post !== null} onClose={onClose} title="Post" size="lg">
       {post &&
@@ -39,6 +63,9 @@ export function PostDetailModal({ post, onClose }: Props) {
           <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
             {new Date(post.createdAt).toLocaleString()}
           </p>
+          <div className="mt-4">
+            <StatusSelect status={post.status} onChange={handleStatusChange} />
+          </div>
         </>
       )}
     </Modal>

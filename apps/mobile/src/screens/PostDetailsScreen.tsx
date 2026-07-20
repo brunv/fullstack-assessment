@@ -7,9 +7,13 @@ import Toast from "react-native-toast-message";
 import { postsCollection } from "../db";
 import type Job from "../db/models/Job";
 import type Post from "../db/models/Post";
+import { updatePostStatus } from "../db/mutations";
 import type { PostDetailsParams } from "../navigation/types";
+import { useSync } from "../sync/SyncContext";
+import type { Status } from "../status";
 import { colors, radius, spacing } from "../theme";
 import { formatRelativeTime } from "../utils/formatRelativeTime";
+import StatusPicker from "./components/StatusPicker";
 
 // Typed against the shared params shape rather than a specific stack's
 // param list — this screen is registered in both HomeStackNavigator and
@@ -19,6 +23,7 @@ type Props = { route: { params: PostDetailsParams } };
 
 export default function PostDetailsScreen({ route }: Props) {
   const { postId } = route.params;
+  const { triggerSync } = useSync();
   const [post, setPost] = useState<Post | null>(null);
   const [job, setJob] = useState<Job | null>(null);
 
@@ -37,6 +42,20 @@ export default function PostDetailsScreen({ route }: Props) {
     return () => subscription?.unsubscribe();
   }, [postId]);
 
+  const handleStatusChange = async (nextStatus: Status) => {
+    if (!post) return;
+    try {
+      await updatePostStatus(post, nextStatus);
+      triggerSync({ silent: true });
+    } catch (err) {
+      Toast.show({
+        type: "error",
+        text1: "Couldn't update status",
+        text2: err instanceof Error ? err.message : "Please try again.",
+      });
+    }
+  };
+
   if (!post) return null;
 
   const imageSource = post.pictureLocalUri || post.pictureUrl || null;
@@ -54,6 +73,9 @@ export default function PostDetailsScreen({ route }: Props) {
       {job && <Text style={styles.jobTitle}>{job.title}</Text>}
       <Text style={styles.description}>{post.description || "No description"}</Text>
       <Text style={styles.date}>{formatRelativeTime(post.createdAt)}</Text>
+
+      <Text style={styles.statusLabel}>Status</Text>
+      <StatusPicker status={post.status} onChange={handleStatusChange} />
     </ScrollView>
   );
 }
@@ -81,4 +103,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   date: { fontSize: 13, color: colors.textMuted, marginTop: spacing.sm },
+  statusLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.textMuted,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xs,
+  },
 });

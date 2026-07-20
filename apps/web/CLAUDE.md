@@ -17,22 +17,24 @@ apps/web/
   .env.local              NEXT_PUBLIC_GRAPHQL_URL (untracked, gitignored)
   src/
     app/
-      layout.tsx             RootLayout: <Sidebar/> + content column, <Providers>, <Toaster/> (sonner)
-      page.tsx                Home: Jobs list, create/delete Job
+      layout.tsx             RootLayout: <Sidebar> (Home/Posts nav) + <Providers>, <Toaster/> (sonner)
+      page.tsx                Home: Jobs list filtered by New/In Progress/Complete tabs, create/delete Job
       providers.tsx            Apollo client/provider setup
       globals.css               imports tailwindcss + theme.css, sets body bg/color
       theme.css                  Tailwind v4 @theme design tokens (colors, spacing, radii) — wired in
-      jobs/[id]/page.tsx        Job details: Posts list, add/delete Post
-      posts/page.tsx             All posts across every job + client-side description search
-    graphql/operations.ts    gql queries/mutations + hand-written TS types (Job, Post, PostJob, ...)
-    lib/uploadPicture.ts     presign → PUT to MinIO → returns {key, contentType}
+      jobs/[id]/page.tsx        Job details: one combined Posts list sorted by status, add/delete Post
+      posts/page.tsx             Cross-job Post search (Sidebar's "Posts" destination) — text search over description
+    graphql/operations.ts    gql queries/mutations + hand-written TS types (Job, Post, Status, PostJob, ...)
+    lib/
+      uploadPicture.ts         presign → PUT to MinIO → returns {key, contentType}
+      status.ts                 STATUS_VALUES / STATUS_LABELS / STATUS_PRIORITY / compareByStatus (mirrors apps/mobile/src/status.ts)
     components/
-      Sidebar.tsx                              left nav (Home/Posts), active state via usePathname()
       Modal.tsx, EmptyState.tsx, Skeleton.tsx   generic UI primitives (Modal takes a size: "md" | "lg" prop)
-      JobCard.tsx, PostCard.tsx                  list row presentational components (PostCard row is clickable → detail modal)
-      PostSearchCard.tsx                         posts/page.tsx's row — shows the parent job's title, no delete button
+      Sidebar.tsx                                 left nav: Home / Posts links
+      StatusBadge.tsx, StatusSelect.tsx          read-only tag vs. dual-purpose 3-way control (mirrors mobile's pair — see "Status" below)
+      JobCard.tsx, PostCard.tsx, PostSearchCard.tsx  list row presentational components (PostCard/PostSearchCard rows are clickable → detail modal)
       CreateJobDialog.tsx, CreatePostDialog.tsx  self-contained forms (own mutation + refetch)
-      PostDetailModal.tsx                        size="lg" Modal showing a post's full image + job title + description
+      PostDetailModal.tsx                        size="lg" Modal: image + job title (when opened from AllPosts search) + description + StatusSelect
 ```
 
 There is no Project/Image reference UI on the web side (that slice is
@@ -74,6 +76,11 @@ revisit shows cached data instantly while revalidating.
   with the resulting `pictureKey`/`pictureContentType`. No offline
   requirement, so this runs synchronously in the create-post form (no
   pre-pass/queueing needed like mobile's sync worker).
+- **Posts search** (`src/app/posts/page.tsx`): `ALL_POSTS_QUERY` (every Post
+  across every Job, `job { id title }` included so `PostSearchCard` can show
+  which Job each result belongs to), filtered client-side by a plain text
+  query against `description`. Opens the same `PostDetailModal` as Job
+  details' post list.
 - Errors at any step (`createJob`, `createPost`, `deleteJob`, `deletePost`,
   the presign call, the MinIO `PUT`) surface as a `sonner` toast
   (`toast.error(...)`) — no silent failures, no blocking `alert()`.
@@ -81,25 +88,65 @@ revisit shows cached data instantly while revalidating.
 No delete-confirmation modal component — uses the browser's native
 `window.confirm()`, mirroring mobile's use of the native `Alert.alert`.
 
-## Navigation + Posts search page
+## Status (Job + Post)
 
-`layout.tsx` renders a persistent left `<Sidebar/>` (Home/Posts) alongside a
-`flex-1` content column instead of a top header bar — every page's own
-`<main>` renders directly into that column, so don't add a second `<main>`
-per page.
+`src/lib/status.ts` + the `Status` type in `graphql/operations.ts` are the
+single source of truth (`"new" | "in_progress" | "complete"`) — mirrors
+`apps/api/core/models.py`'s `Status` TextChoices and
+`apps/mobile/src/status.ts` (three separate files by necessity, no shared
+package between the apps in this monorepo). `STATUS_PRIORITY`/
+`compareByStatus` rank `new` < `in_progress` < `complete`, for **sorting**
+(Job details) — Home uses filtering instead, see below. Every Job/Post
+starts `"new"` (server-side model default; `createJob`/`createPost`'s
+selection sets include `status` so it's in the cache from the moment of
+creation, not just after a refetch).
 
-`/posts` (`src/app/posts/page.tsx`) queries `ALL_POSTS_QUERY` → API's
-`Query.posts` (`apps/api/core/schema.py`, all non-deleted posts across every
-job, `select_related("job")` to avoid an N+1), then filters client-side with
-`useMemo` on `description.toLowerCase().includes(query)` — no server-side
-search, matches the dataset size and mirrors mobile's `AllPostsScreen`
-(same filtering approach, same reason: no search infrastructure needed at
-this scale). `PostSearchCard` shows the parent job's title (from the same
-query, via `Post.job`) since — unlike `/jobs/[id]` — the job isn't otherwise
-implied by being on this page. Clicking a card opens the same
-`PostDetailModal` used by `/jobs/[id]`, which now also renders `post.job.title`
-when present (harmless no-op when absent, e.g. Home's job-scoped query
-doesn't fetch `job` on its posts).
+`StatusSelect` (3-segment control) is used for **two different purposes**
+depending on where it's mounted, same component either way — its props
+(`status`, `onChange`, `disabled?`) don't encode which mode it's in:
+- **`page.tsx` (Home)**: filters the Job list into three tabs, backed by a
+  plain `useState<Status>("new")` and a `useMemo` filter over the single
+  `JOBS_QUERY` result — not three separate queries, so there's only ever one
+  thing to refetch/revalidate regardless of which tab is active.
+- **`jobs/[id]/page.tsx`** (editing the Job's own status) and inside
+  **`PostDetailModal.tsx`** (editing the Post's status, wired directly in
+  the modal since it's the only place Post status is edited) — status is
+  only ever *edited* from a detail view, never from a list row; list rows
+  (`JobCard`/`PostCard`/`PostSearchCard`) only ever render the read-only
+  `StatusBadge`. A
+  Job's Post list (`jobs/[id]/page.tsx`) is **not** tabbed like Home's Job
+  list — one combined array, sorted client-side
+  (`[...data.job.posts].sort((a,b) => compareByStatus(a,b) || ...)`) rather
+  than filtered, so all of a job's posts are visible at once regardless of
+  status.
+
+**Deliberate exception to this file's usual `refetchQueries` convention**:
+`UPDATE_JOB_STATUS`/`UPDATE_POST_STATUS` use neither `refetchQueries` nor a
+manual `update` function. Their selection sets return `id` + `status`, and
+since every list/detail query also requests `id` on these entities, Apollo's
+default `InMemoryCache` normalizes by `__typename:id` and patches the field
+everywhere that entity is currently rendered from cache — Home's job card
+and the job-details post list both update from a single mutation with zero
+extra network requests. This only works because status editing changes a
+field on an *existing* entity, not list membership; creates/deletes still
+need `refetchQueries` because adding/removing a row isn't something
+field-level cache normalization can infer on its own.
+
+## Navigation
+
+`layout.tsx` renders a persistent left `Sidebar` (`Home` / `Posts` links)
+alongside `{children}`. `Home` (`/`) is the Job list; `Posts` (`/posts`) is
+`AllPostsScreen`'s web counterpart — a flat, searchable list of every Post
+across every Job (`ALL_POSTS_QUERY`, filtered client-side by a text query
+against `description`). `/jobs/[id]` is reached only via a `JobCard` click
+from Home; there's no other route into it.
+
+**Do not confuse this with status filtering** — a past miscommunication led
+to this Sidebar being removed by mistake while chasing an unrelated request
+to drop a status *tab view*. The two are unrelated: the Sidebar is top-level
+app navigation (Home vs. Posts destinations); the status tabs described
+below are a client-side filter *within* the Home page's Job list. Don't
+remove the Sidebar without an explicit, unambiguous request to do so.
 
 ## Running
 

@@ -48,28 +48,45 @@ These were never implemented for Project/Image specifically — only
 ## Job/Post feature (built)
 
 `core/models.py`: `Job` (`id` client-generatable 16-char string PK via
-`generate_client_id()`, `title`, `is_deleted`, `created_at`, `updated_at`) and
-`Post` (same id scheme, FK → Job `related_name="posts"`, `description`,
-`picture_key`, `picture_content_type`, `is_deleted`, `created_at`,
-`updated_at`). **Deletes are soft** — `is_deleted` is a tombstone flag, never
-a hard `DELETE`; see `soft_delete_job()`/`soft_delete_post()` in
-`core/models.py` (the former cascades to the job's posts). `JobAdmin`/
-`PostAdmin` in `core/admin.py` block the admin's hard-delete action via
-`has_delete_permission`.
+`generate_client_id()`, `title`, `status`, `is_deleted`, `created_at`,
+`updated_at`) and `Post` (same id scheme, FK → Job `related_name="posts"`,
+`description`, `picture_key`, `picture_content_type`, `status`, `is_deleted`,
+`created_at`, `updated_at`). **Deletes are soft** — `is_deleted` is a
+tombstone flag, never a hard `DELETE`; see `soft_delete_job()`/
+`soft_delete_post()` in `core/models.py` (the former cascades to the job's
+posts). `JobAdmin`/`PostAdmin` in `core/admin.py` block the admin's
+hard-delete action via `has_delete_permission`.
+
+`status` is a shared `Status(models.TextChoices)` (`NEW`/`IN_PROGRESS`/`COMPLETE`,
+values `"new"`/`"in_progress"`/`"complete"`) on both models, `default=Status.NEW`
+— every new Job/Post starts `"new"`, changed only via `updateJobStatus`/
+`updatePostStatus` (or a sync push, mobile's path — see below). **Gotcha**:
+`JobType`/`PostType` override `status` as a plain `graphene.String()` with an
+explicit `resolve_status` returning `str(self.status)` — graphene_django's
+default auto-generated enum for a `choices` CharField can't serialize a
+freshly-`.create()`d instance's Django `TextChoices` member directly
+(`"cannot represent value: Status.NEW"`; only reproduces before the instance
+is re-fetched from DB, so it's easy to miss in ad hoc testing). Same pattern
+as `picture_url` — plain string field + explicit resolver, not the
+auto-converted type.
 
 `core/schema.py`: `JobType`/`PostType` (`Query.jobs`/`Query.job(id)`/`Query.posts`
 all filter `is_deleted=False`; `JobType.resolve_posts` filters the reverse
 relation the same way). `Query.posts` returns every post across every job
-(`select_related("job")`) — backs the web `/posts` page and is the query
-mobile's `AllPostsScreen` conceptually mirrors locally against WatermelonDB
-(mobile doesn't call this query directly; it reads its own already-synced
-`postsCollection` with no `job_id` filter). Mutations: `createJob(title)`, `createPost(jobId, description,
+(`select_related("job")`) — it backs the cross-job "Posts" search page/screen
+on both clients (mobile's `AllPostsScreen`/PostsTab, web's `/posts`), which
+filters by description text client-side over this one query. Mutations: `createJob(title)`, `createPost(jobId, description,
 pictureKey, pictureContentType)`, `createPresignedUpload(filename,
-contentType)` (generic — reused for any picture), `deleteJob(id)`,
-`deletePost(id)` (soft-delete, `deleteJob` cascades). **None of these are
-mobile's primary write path** — mobile writes/deletes locally via
-WatermelonDB and syncs through `core/sync.py` below; these mutations exist
-for API completeness/testing and a future web client.
+contentType)` (generic — reused for any picture), `updateJobStatus(id, status)`,
+`updatePostStatus(id, status)` (status arg is a plain `String!`, validated
+against `Status.values` via `_validate_status()` — raises `GraphQLError` on
+anything else), `deleteJob(id)`, `deletePost(id)` (soft-delete, `deleteJob`
+cascades). **None of these are mobile's primary write path** — mobile
+writes/deletes/updates-status locally via WatermelonDB and syncs through
+`core/sync.py` below; these mutations exist for API completeness/testing and
+the web client (web's status editing **does** call `updateJobStatus`/
+`updatePostStatus` directly, since web has no local DB to write through
+first).
 
 `core/storage.py` adds `public_url(key)` — a plain, non-expiring URL, used
 for `PostType.picture_url` and the sync pull payload **instead of**
@@ -95,10 +112,16 @@ all-or-nothing conflict pre-check (`transaction.atomic`) per WatermelonDB's
 backend contract — a pushed record whose server `updated_at` moved past the
 client's `lastPulledAt` aborts the whole push (409); the mobile client
 retries once (re-pull, re-push). Deletes arrive as id lists and are applied
-via the same soft-delete helpers as the GraphQL mutations. Verified
-end-to-end via curl: fresh pull, valid push, stale-push abort (409),
-delete→tombstone round trip, and job-delete cascading to its posts even when
-the push only names the job id.
+via the same soft-delete helpers as the GraphQL mutations. `status` is in
+both `_JOB_FIELDS`/`_POST_FIELDS` (pushable) — unlike the GraphQL mutations'
+`_validate_status()` (which raises), an invalid `status` value in a sync push
+is silently dropped from that record's `defaults` rather than failing the
+whole push (matches the sync protocol's existing "sanitize, don't reject"
+posture for this endpoint specifically). Verified end-to-end via curl: fresh
+pull, valid push, stale-push abort (409), delete→tombstone round trip,
+job-delete cascading to its posts even when the push only names the job id,
+and a status update round-tripping through push→pull with an invalid value
+confirmed dropped rather than corrupting the row.
 
 True concurrent-edit conflicts are unreachable in the current mobile UI
 (create/delete only, no field-level edit), so the abort/retry path is real
@@ -139,7 +162,9 @@ GraphiQL: http://localhost:8000/graphql/ · Health: http://localhost:8000/health
 · Admin: http://localhost:8000/admin/ (`python manage.py createsuperuser`)
 
 Migrations: `core/migrations/0001_initial.py` (Project/Image),
-`0002_job_post.py` (Job/Post) — new fields need a new migration as usual.
+`0002_job_post.py` (Job/Post), `0003_job_status_post_status.py` (status
+field, `default="new"` — applied cleanly to existing rows, no data loss) —
+new fields need a new migration as usual.
 
 ## Conventions
 
